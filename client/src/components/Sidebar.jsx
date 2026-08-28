@@ -182,7 +182,7 @@ export default function Sidebar({
       <div className="sidebar-footer">
         <button className="footer-btn" onClick={onOpenSettings}>
           <Settings size={15} />
-          <span>Settings & Appearance</span>
+          <span>Settings</span>
         </button>
 
         <button 
