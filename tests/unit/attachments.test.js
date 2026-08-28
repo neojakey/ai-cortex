@@ -7,8 +7,8 @@ import fs from 'node:fs';
 
 test('AttachmentService - computes identical SHA-256 hash for identical data', () => {
   const service = new AttachmentService();
-  const buffer1 = Buffer.from('SecondBrain Test Attachment Payload');
-  const buffer2 = Buffer.from('SecondBrain Test Attachment Payload');
+  const buffer1 = Buffer.from('AI-Cortex Test Attachment Payload');
+  const buffer2 = Buffer.from('AI-Cortex Test Attachment Payload');
   const buffer3 = Buffer.from('Different content');
 
   const hash1 = service.computeHash(buffer1);

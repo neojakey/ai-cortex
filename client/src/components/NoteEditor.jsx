@@ -96,11 +96,11 @@ Hashtags: ${tagsText}
 ${content}
 
 ---
-## Linked Backlinks in SecondBrain
+## Linked Backlinks in AI-Cortex
 ${backlinksText}
 
 ---
-[SecondBrain Context Bundle: You can answer questions, summarize, or propose edits to this note]
+[AI-Cortex Context Bundle: You can answer questions, summarize, or propose edits to this note]
 `;
 
     navigator.clipboard.writeText(promptBundle);

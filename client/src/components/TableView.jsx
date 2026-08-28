@@ -43,7 +43,7 @@ export default function TableView({
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 700 }}>Database Grid</h2>
           <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            Structured relational view of your SecondBrain notes
+            Structured relational view of your AI-Cortex notes
           </p>
         </div>
 

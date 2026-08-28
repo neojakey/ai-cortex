@@ -177,7 +177,7 @@ export default function SettingsModal({
                   Connect Your Monthly Claude & Gemini Subscriptions
                 </h4>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                  SecondBrain ships with a high-performance **Model Context Protocol (MCP)** server.
+                  AI-Cortex ships with a high-performance **Model Context Protocol (MCP)** server.
                   This allows Claude Desktop (using your Claude Pro subscription) and Gemini to query, read,
                   link, and update your notes natively over <code>stdio</code> with <strong>zero API keys and no token fees</strong>.
                 </p>

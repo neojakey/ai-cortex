@@ -12,7 +12,7 @@ import { slugify } from '../services/parser.js';
 
 const server = new Server(
   {
-    name: 'secondbrain-mcp',
+    name: 'ai-cortex-mcp',
     version: '1.0.0'
   },
   {
@@ -27,8 +27,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: 'secondbrain_search',
-        description: 'Search SecondBrain notes using fast MySQL full-text and tag matching.',
+        name: 'ai_cortex_search',
+        description: 'Search AI-Cortex notes using fast MySQL full-text and tag matching.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -45,7 +45,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: 'secondbrain_read_note',
+        name: 'ai_cortex_read_note',
         description: 'Read the full content, backlinks, tags, and properties of a note by title, slug, or ID.',
         inputSchema: {
           type: 'object',
@@ -59,8 +59,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: 'secondbrain_create_note',
-        description: 'Create a new note in SecondBrain with automatic wikilink and hashtag parsing.',
+        name: 'ai_cortex_create_note',
+        description: 'Create a new note in AI-Cortex with automatic wikilink and hashtag parsing.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -95,8 +95,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: 'secondbrain_update_note',
-        description: 'Update or append content to an existing note in SecondBrain.',
+        name: 'ai_cortex_update_note',
+        description: 'Update or append content to an existing note in AI-Cortex.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -117,8 +117,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: 'secondbrain_get_backlinks',
-        description: 'Discover all notes in SecondBrain that link to a specific note or topic.',
+        name: 'ai_cortex_get_backlinks',
+        description: 'Discover all notes in AI-Cortex that link to a specific note or topic.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -131,8 +131,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: 'secondbrain_list_recent',
-        description: 'List the most recently updated notes in SecondBrain.',
+        name: 'ai_cortex_list_recent',
+        description: 'List the most recently updated notes in AI-Cortex.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -148,8 +148,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: 'secondbrain_list_tasks',
-        description: 'List action items (- [ ] / - [x]) across all SecondBrain notes.',
+        name: 'ai_cortex_list_tasks',
+        description: 'List action items (- [ ] / - [x]) across all AI-Cortex notes.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -170,7 +170,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
-      case 'secondbrain_search': {
+      case 'ai_cortex_search': {
         const results = await searchService.search(args.query, {
           limit: args.limit || 10
         });
@@ -184,7 +184,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case 'secondbrain_read_note': {
+      case 'ai_cortex_read_note': {
         const identifier = String(args.idOrTitle).trim();
         let note = await noteService.getNoteById(identifier);
         if (!note) {
@@ -202,7 +202,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case 'secondbrain_create_note': {
+      case 'ai_cortex_create_note': {
         const newNote = await noteService.createNote({
           title: args.title,
           content: args.content,
@@ -221,7 +221,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case 'secondbrain_update_note': {
+      case 'ai_cortex_update_note': {
         const identifier = String(args.idOrTitle).trim();
         let note = await noteService.getNoteById(identifier);
         if (!note) {
@@ -250,7 +250,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case 'secondbrain_get_backlinks': {
+      case 'ai_cortex_get_backlinks': {
         const identifier = String(args.idOrTitle).trim();
         let note = await noteService.getNoteById(identifier);
         if (!note) {
@@ -276,7 +276,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case 'secondbrain_list_recent': {
+      case 'ai_cortex_list_recent': {
         const notes = await noteService.listNotes({
           limit: args.limit || 15,
           tag: args.tag || null
@@ -286,7 +286,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case 'secondbrain_list_tasks': {
+      case 'ai_cortex_list_tasks': {
         const tasks = await noteService.getTasks({
           completed: args.completed !== undefined ? args.completed : null
         });
@@ -310,7 +310,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('SecondBrain MCP Server running on stdio');
+  console.error('AI-Cortex MCP Server running on stdio');
 }
 
 main().catch((err) => {

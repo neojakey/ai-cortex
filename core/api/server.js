@@ -351,7 +351,7 @@ app.get('/api/vault/export', async (req, res) => {
   try {
     const timestamp = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="SecondBrain-Vault-${timestamp}.zip"`);
+    res.setHeader('Content-Disposition', `attachment; filename="AI-Cortex-Vault-${timestamp}.zip"`);
     await exportService.exportVaultToZip(res);
   } catch (err) {
     console.error('[vault/export] failed:', err);
@@ -525,7 +525,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 export function startServer(port = PORT, host = HOST) {
   serverRef = app.listen(port, host, () => {
-    console.log(`[SecondBrain API] Server listening on http://${host}:${port}`);
+    console.log(`[AI-Cortex API] Server listening on http://${host}:${port}`);
   });
   return serverRef;
 }

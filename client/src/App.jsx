@@ -107,7 +107,7 @@ export default function App() {
       // Default select first note if none selected
       setActiveNoteId((cur) => cur || (notesData.notes && notesData.notes[0]?.id) || null);
     } catch (err) {
-      console.error('Error fetching SecondBrain data:', err);
+      console.error('Error fetching AI-Cortex data:', err);
     }
   }, [selectedTag]);
 

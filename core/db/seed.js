@@ -17,9 +17,9 @@ export async function seed() {
   // Note 1: Architecture Overview
   const archNote = await noteService.createNote({
     title: 'Architecture Overview',
-    content: `# SecondBrain Architecture Overview
+    content: `# AI-Cortex Architecture Overview
 
-Welcome to your self-hosted **Second Brain**! This system is designed for sub-millisecond query speed, privacy, and full ownership.
+Welcome to your self-hosted **AI-Cortex**! This system is designed for sub-millisecond query speed, privacy, and full ownership.
 
 ## Core Pillars
 1. **Relational MySQL 8.4 Backing**: All notes, relations, and Notion properties are indexed in MySQL.
@@ -77,7 +77,7 @@ Refer to [[Weekly Sync Notes]] for team decisions and timeline updates.
     title: 'Weekly Sync Notes',
     content: `# Weekly Sync Notes (August 2026)
 
-Discussing the new SecondBrain deployment and migration from Obsidian/Notion.
+Discussing the new AI-Cortex deployment and migration from Obsidian/Notion.
 
 ## Highlights
 - **Decided**: Keep filesystem for attachments + MySQL for metadata for best performance.

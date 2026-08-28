@@ -83,7 +83,7 @@ Open **http://127.0.0.1:3001**. The API binds to `HOST` (default `127.0.0.1`); s
 1. Open AI-Cortex in your browser.
 2. Click **Settings** in the bottom-left sidebar, then open the **AI Integrations** tab.
 3. Click the **"1-Click Auto Install"** button (or copy the pre-filled JSON snippet into your `claude_desktop_config.json`). A **"1-Click Enable for Gemini"** button does the same for `.agents/mcp_config.json` in this workspace.
-4. Restart Claude Desktop. You will now see the memory tools (`secondbrain_search`, `secondbrain_read_note`, `secondbrain_create_note`, `secondbrain_update_note`, `secondbrain_get_backlinks`, `secondbrain_list_recent`, `secondbrain_list_tasks`) available directly in Claude using your **existing Claude Pro subscription**!
+4. Restart Claude Desktop. You will now see the memory tools (`ai_cortex_search`, `ai_cortex_read_note`, `ai_cortex_create_note`, `ai_cortex_update_note`, `ai_cortex_get_backlinks`, `ai_cortex_list_recent`, `ai_cortex_list_tasks`) available directly in Claude using your **existing Claude Pro subscription**!
 
 ---
 
