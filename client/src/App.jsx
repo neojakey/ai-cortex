@@ -17,6 +17,21 @@ export default function App() {
   const [selectedTag, setSelectedTag] = useState(null);
   const [health, setHealth] = useState(null);
 
+  // Theme Management: 'dark' (Obsidian Carbon) vs 'light' (Warm Alabaster Paper)
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('ai_cortex_theme') || 
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('ai_cortex_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  }, []);
+
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -174,6 +189,12 @@ export default function App() {
         handleOpenDaily();
       }
 
+      // Alt + T -> Toggle Theme (Light / Dark)
+      if (e.altKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        toggleTheme();
+      }
+
       // Cmd/Ctrl + N -> New Note
       if ((e.metaKey || e.ctrlKey) && (e.key === 'n' || e.key === 'N') && !e.shiftKey) {
         e.preventDefault();
@@ -183,7 +204,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleOpenDaily, handleCreateNote]);
+  }, [handleOpenDaily, handleCreateNote, toggleTheme]);
 
   return (
     <div className="app-container">
@@ -205,6 +226,8 @@ export default function App() {
         selectedTag={selectedTag}
         onSelectTag={setSelectedTag}
         health={health}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       {/* Main View Router */}

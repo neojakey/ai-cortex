@@ -207,15 +207,37 @@ ${backlinksText}
     .filter((n) => n.id !== note.id && n.title.toLowerCase().includes(wikilinkSearch))
     .slice(0, 6);
 
+  const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+  const readingTime = Math.max(1, Math.ceil(wordCount / 200));
+
+  // Quick markdown insertion helper
+  const insertMarkdown = (prefix, suffix = '') => {
+    if (!textareaRef.current) return;
+    const textarea = textareaRef.current;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = content.substring(start, end);
+    const replacement = `${prefix}${selected || 'text'}${suffix}`;
+    const newContent = content.substring(0, start) + replacement + content.substring(end);
+    setContent(newContent);
+    onUpdateNote(note.id, { content: newContent });
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, start + prefix.length + (selected || 'text').length);
+    }, 10);
+  };
+
   return (
     <div className="editor-wrapper">
       {/* Top Header Action Bar */}
       <div className="editor-header-bar">
         <div className="editor-breadcrumbs">
-          <span>Notes</span>
-          <span>/</span>
-          <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>{title || 'Untitled'}</span>
-          <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 8 }}>({saveStatus})</span>
+          <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{title || 'Untitled'}</span>
+          <span style={{ opacity: 0.4 }}>•</span>
+          <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{wordCount} words</span>
+          <span style={{ opacity: 0.4 }}>•</span>
+          <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{readingTime} min read</span>
+          <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 6 }}>({saveStatus})</span>
         </div>
 
         <div className="editor-actions">
@@ -223,10 +245,10 @@ ${backlinksText}
           <button 
             className="btn-ai-context" 
             onClick={copyAiContext}
-            title="Bundle note and backlinks for Claude Pro or Gemini Advanced (Cmd/Ctrl + Shift + C)"
+            title="Bundle note and backlinks for Claude Pro, Gemini Advanced, or ChatGPT (Cmd/Ctrl + Shift + C)"
           >
             {copiedContext ? <Check size={14} color="#10b981" /> : <Sparkles size={14} />}
-            <span>{copiedContext ? 'Context Copied!' : 'Copy for Claude / Gemini'}</span>
+            <span>{copiedContext ? 'Context Copied!' : 'Copy for AI (Claude / Gemini)'}</span>
           </button>
 
           {/* Attachment button */}
@@ -302,6 +324,34 @@ ${backlinksText}
               </div>
             </div>
           )}
+        </div>
+
+        {/* Editorial Quick-Format Ribbon */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 0 6px', borderBottom: '1px solid var(--border-dim)' }}>
+          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12, fontWeight: 700 }} onClick={() => insertMarkdown('**', '**')} title="Bold">
+            B
+          </button>
+          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12, fontStyle: 'italic' }} onClick={() => insertMarkdown('*', '*')} title="Italic">
+            I
+          </button>
+          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontWeight: 600 }} onClick={() => insertMarkdown('# ')} title="Heading 1">
+            H1
+          </button>
+          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontWeight: 600 }} onClick={() => insertMarkdown('## ')} title="Heading 2">
+            H2
+          </button>
+          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)' }} onClick={() => insertMarkdown('- [ ] ')} title="Checkbox Task">
+            [ ] Task
+          </button>
+          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => insertMarkdown('> ')} title="Callout Quote">
+            “ Quote
+          </button>
+          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)' }} onClick={() => insertMarkdown('`', '`')} title="Code">
+            &lt;/&gt;
+          </button>
+          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, color: 'var(--accent-primary)', fontWeight: 600 }} onClick={() => insertMarkdown('[[', ']]')} title="Wikilink">
+            ⇄ [[Link]]
+          </button>
         </div>
 
         {/* Note Textarea with Wikilink Autocomplete */}

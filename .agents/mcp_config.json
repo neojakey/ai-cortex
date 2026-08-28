@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ai-cortex": {
+      "command": "/usr/bin/node-22",
+      "args": [
+        "/home/pauljacobs/dev/SecondBrain/core/mcp/index.js"
+      ]
+    }
+  }
+}

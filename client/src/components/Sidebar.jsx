@@ -11,7 +11,9 @@ import {
   Trash2, 
   Tag, 
   Sparkles,
-  Layers
+  Cpu,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -27,7 +29,9 @@ export default function Sidebar({
   tags,
   selectedTag,
   onSelectTag,
-  health
+  health,
+  theme,
+  onToggleTheme
 }) {
   return (
     <aside className="sidebar">
@@ -35,19 +39,33 @@ export default function Sidebar({
       <div className="sidebar-header">
         <div className="brand-badge">
           <div className="icon-box">
-            <Layers size={18} color="#ffffff" />
+            <Cpu size={18} color="#ffffff" />
           </div>
           <div>
-            <div className="brand-title">SecondBrain</div>
+            <div className="brand-title">
+              <span>AI-Cortex</span>
+              <span className="brand-title-dot" />
+            </div>
           </div>
         </div>
 
-        {health && (
-          <div className="latency-pill" title={`MySQL 8.4 connection latency: ${health.db?.latencyMs}ms`}>
-            <span className="latency-dot" />
-            <span>{health.db?.latencyMs ? `${health.db.latencyMs}ms` : 'online'}</span>
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            className="theme-toggle-btn"
+            onClick={onToggleTheme}
+            title={theme === 'dark' ? 'Switch to Warm Alabaster Light Mode (Alt+T)' : 'Switch to Obsidian Dark Mode (Alt+T)'}
+            aria-label="Toggle color theme"
+          >
+            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
+
+          {health && (
+            <div className="latency-pill" title={`MySQL 8.4 connection latency: ${health.db?.latencyMs}ms`}>
+              <span className="latency-dot" />
+              <span>{health.db?.latencyMs ? `${health.db.latencyMs}ms` : 'ok'}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Quick Actions */}
