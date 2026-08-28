@@ -324,10 +324,10 @@ app.get('/api/settings/mcp-config', (req, res) => {
   const mcpScriptPath = path.resolve(__dirname, '../mcp/index.js');
   const nodeBinary = process.execPath || 'node';
 
-  // Config for Claude Desktop
-  const claudeConfig = {
+  // Config for Claude Desktop and Gemini / Antigravity
+  const mcpServersConfig = {
     mcpServers: {
-      secondbrain: {
+      "ai-cortex": {
         command: nodeBinary,
         args: [mcpScriptPath]
       }
@@ -346,7 +346,8 @@ app.get('/api/settings/mcp-config', (req, res) => {
   res.json({
     mcpScriptPath,
     nodeBinary,
-    claudeConfig,
+    claudeConfig: mcpServersConfig,
+    geminiConfig: mcpServersConfig,
     configPaths,
     detectedPath: configPaths[configPaths.currentOS]
   });
@@ -378,7 +379,7 @@ app.post('/api/settings/install-claude-config', async (req, res) => {
     }
 
     if (!existingData.mcpServers) existingData.mcpServers = {};
-    existingData.mcpServers.secondbrain = {
+    existingData.mcpServers["ai-cortex"] = {
       command: nodeBinary,
       args: [mcpScriptPath]
     };
@@ -387,7 +388,47 @@ app.post('/api/settings/install-claude-config', async (req, res) => {
 
     res.json({
       success: true,
-      message: `SecondBrain successfully added to Claude Desktop configuration at ${targetPath}`,
+      message: `AI-Cortex successfully added to Claude Desktop configuration at ${targetPath}`,
+      path: targetPath
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Auto-install to Gemini / Antigravity workspace config (.agents/mcp_config.json)
+app.post('/api/settings/install-gemini-config', async (req, res) => {
+  try {
+    const mcpScriptPath = path.resolve(__dirname, '../mcp/index.js');
+    const nodeBinary = process.execPath || 'node';
+    const projectRoot = path.resolve(__dirname, '../../');
+    const agentsDir = path.join(projectRoot, '.agents');
+    const targetPath = path.join(agentsDir, 'mcp_config.json');
+
+    if (!fs.existsSync(agentsDir)) {
+      fs.mkdirSync(agentsDir, { recursive: true });
+    }
+
+    let existingData = { mcpServers: {} };
+    if (fs.existsSync(targetPath)) {
+      try {
+        existingData = JSON.parse(fs.readFileSync(targetPath, 'utf8'));
+      } catch (e) {
+        existingData = { mcpServers: {} };
+      }
+    }
+
+    if (!existingData.mcpServers) existingData.mcpServers = {};
+    existingData.mcpServers["ai-cortex"] = {
+      command: nodeBinary,
+      args: [mcpScriptPath]
+    };
+
+    fs.writeFileSync(targetPath, JSON.stringify(existingData, null, 2), 'utf8');
+
+    res.json({
+      success: true,
+      message: `AI-Cortex successfully registered for Gemini in this workspace at .agents/mcp_config.json`,
       path: targetPath
     });
   } catch (err) {

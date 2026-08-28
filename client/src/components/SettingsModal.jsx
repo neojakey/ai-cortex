@@ -18,7 +18,9 @@ export default function SettingsModal({ isOpen, onClose, health, onRefreshData }
   const [activeTab, setActiveTab] = useState('ai'); // 'ai', 'db', 'vault'
   const [mcpConfig, setMcpConfig] = useState(null);
   const [copiedClaude, setCopiedClaude] = useState(false);
+  const [copiedGemini, setCopiedGemini] = useState(false);
   const [autoInstallStatus, setAutoInstallStatus] = useState(null);
+  const [autoInstallGeminiStatus, setAutoInstallGeminiStatus] = useState(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
 
@@ -40,6 +42,13 @@ export default function SettingsModal({ isOpen, onClose, health, onRefreshData }
     setTimeout(() => setCopiedClaude(false), 2000);
   };
 
+  const handleCopyGeminiConfig = () => {
+    if (!mcpConfig) return;
+    navigator.clipboard.writeText(JSON.stringify(mcpConfig.geminiConfig, null, 2));
+    setCopiedGemini(true);
+    setTimeout(() => setCopiedGemini(false), 2000);
+  };
+
   const handleAutoInstallClaude = async () => {
     setAutoInstallStatus('Installing...');
     try {
@@ -54,6 +63,22 @@ export default function SettingsModal({ isOpen, onClose, health, onRefreshData }
       setAutoInstallStatus(`Failed: ${err.message}`);
     }
     setTimeout(() => setAutoInstallStatus(null), 4000);
+  };
+
+  const handleAutoInstallGemini = async () => {
+    setAutoInstallGeminiStatus('Activating...');
+    try {
+      const res = await fetch('/api/settings/install-gemini-config', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setAutoInstallGeminiStatus('Activated!');
+      } else {
+        setAutoInstallGeminiStatus(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setAutoInstallGeminiStatus(`Failed: ${err.message}`);
+    }
+    setTimeout(() => setAutoInstallGeminiStatus(null), 4000);
   };
 
   const handleImportVault = async (e) => {
@@ -182,18 +207,47 @@ export default function SettingsModal({ isOpen, onClose, health, onRefreshData }
                 </pre>
               </div>
 
-              {/* Gemini Section */}
+              {/* Gemini / Antigravity Section */}
               <div style={{ background: 'var(--bg-app)', border: '1px solid var(--border-dim)', borderRadius: 'var(--radius-md)', padding: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <Cpu size={16} color="#60a5fa" />
-                  <span style={{ fontWeight: 600, fontSize: 13.5 }}>Gemini / Antigravity Integration</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Cpu size={16} color="#60a5fa" />
+                    <span style={{ fontWeight: 600, fontSize: 13.5 }}>Gemini / Antigravity IDE Integration</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className="btn-primary"
+                      style={{ fontSize: 12, padding: '4px 10px' }}
+                      onClick={handleAutoInstallGemini}
+                    >
+                      {autoInstallGeminiStatus || '1-Click Enable for Gemini'}
+                    </button>
+                    <button
+                      className="search-trigger-btn"
+                      style={{ fontSize: 12, padding: '4px 10px' }}
+                      onClick={handleCopyGeminiConfig}
+                    >
+                      {copiedGemini ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
+                      <span>{copiedGemini ? 'Copied' : 'Copy JSON'}</span>
+                    </button>
+                  </div>
                 </div>
-                <p style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  The local MCP server is running directly in this workspace. Gemini tools can be invoked via:
+
+                <p style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 8 }}>
+                  Registers AI-Cortex in your workspace (<code>.agents/mcp_config.json</code>). Gemini and Antigravity can automatically query, search, and update your notes during pair programming sessions with zero API keys.
                 </p>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, background: 'rgba(0,0,0,0.4)', padding: 10, borderRadius: 6, marginTop: 8, color: '#a5b4fc' }}>
-                  node {mcpConfig?.mcpScriptPath}
-                </div>
+
+                <pre style={{
+                  background: 'rgba(0, 0, 0, 0.4)',
+                  padding: 12,
+                  borderRadius: 6,
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11.5,
+                  color: '#93c5fd',
+                  overflowX: 'auto'
+                }}>
+                  {mcpConfig ? JSON.stringify(mcpConfig.geminiConfig, null, 2) : 'Loading...'}
+                </pre>
               </div>
             </>
           )}
