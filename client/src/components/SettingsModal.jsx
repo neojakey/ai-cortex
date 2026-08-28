@@ -336,18 +336,16 @@ export default function SettingsModal({
 
               {/* 16-Swatch Color Scheme Grid */}
               <div>
-                <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 10 }}>
-                  Select Palette Harmony (16 Schemes)
+                <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 12 }}>
+                  Color Scheme Accent (16 Curated Harmonies)
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <ThemePalettePicker
-                    activeSchemeId={colorScheme}
-                    isDark={theme === 'dark'}
-                    customColor={customColor}
-                    onSelectScheme={onSelectScheme}
-                    onSelectCustomColor={onSelectCustomColor}
-                  />
-                </div>
+                <ThemePalettePicker
+                  activeSchemeId={colorScheme}
+                  isDark={theme === 'dark'}
+                  customColor={customColor}
+                  onSelectScheme={onSelectScheme}
+                  onSelectCustomColor={onSelectCustomColor}
+                />
               </div>
             </>
           )}

@@ -14,73 +14,98 @@ export default function ThemePalettePicker({
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: 'repeat(4, 1fr)',
-      gap: 10,
-      padding: 14,
-      background: 'var(--bg-app)',
-      border: '1px solid var(--border-dim)',
-      borderRadius: 'var(--radius-lg)',
-      width: 280,
-      boxShadow: 'var(--shadow-modal)'
+      gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))',
+      gap: 12,
+      width: '100%'
     }}>
       {COLOR_SCHEMES.map((scheme) => {
         const isActive = activeSchemeId === scheme.id && !customColor;
-        const swatch = isDark ? scheme.swatchDark : scheme.swatchLight;
+        const palette = isDark ? scheme.dark : scheme.light;
 
         return (
           <button
             key={scheme.id}
+            type="button"
             onClick={() => onSelectScheme(scheme.id)}
-            title={scheme.name}
             style={{
-              aspectRatio: '1',
-              background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+              background: 'var(--bg-card)',
               border: isActive ? '2px solid var(--accent-primary)' : '1px solid var(--border-dim)',
               borderRadius: 'var(--radius-md)',
+              padding: '12px 14px',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              flexDirection: 'column',
+              gap: 10,
               cursor: 'pointer',
-              position: 'relative',
-              padding: 6,
-              transition: 'all 0.15s ease'
+              textAlign: 'left',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              boxShadow: isActive ? '0 0 16px var(--accent-glow)' : 'var(--shadow-subtle)',
+              position: 'relative'
+            }}
+            onMouseEnter={(e) => {
+              if (!isActive) {
+                e.currentTarget.style.borderColor = 'var(--border-subtle)';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isActive) {
+                e.currentTarget.style.borderColor = 'var(--border-dim)';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }
             }}
           >
-            {/* Split Circle Swatch Preview */}
+            {/* Elegant Gradient Swatch Ribbon */}
             <div style={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              overflow: 'hidden',
+              width: '100%',
+              height: 28,
+              borderRadius: 6,
+              background: palette.gradient,
+              boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.2), 0 2px 6px rgba(0,0,0,0.15)',
               position: 'relative',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
-              display: 'flex',
-              flexDirection: 'column'
+              overflow: 'hidden'
             }}>
-              {/* Top Half */}
-              <div style={{ width: '100%', height: '50%', background: swatch.top }} />
-              {/* Bottom Half (Split Left and Right) */}
-              <div style={{ width: '100%', height: '50%', display: 'flex' }}>
-                <div style={{ width: '50%', height: '100%', background: swatch.left }} />
-                <div style={{ width: '50%', height: '100%', background: swatch.right }} />
-              </div>
+              {/* Subtle inner highlight shimmer */}
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: '40%',
+                background: 'linear-gradient(to bottom, rgba(255,255,255,0.25), transparent)',
+                pointerEvents: 'none'
+              }} />
+            </div>
 
-              {/* Active Checkmark Badge */}
+            {/* Label & Active State */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%'
+            }}>
+              <span style={{
+                fontSize: 12.5,
+                fontWeight: isActive ? 600 : 500,
+                color: isActive ? 'var(--accent-primary)' : 'var(--text-main)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                {scheme.name}
+              </span>
+
               {isActive && (
                 <div style={{
-                  position: 'absolute',
-                  top: 2,
-                  right: 2,
-                  width: 14,
-                  height: 14,
+                  width: 16,
+                  height: 16,
                   borderRadius: '50%',
-                  background: '#2563eb',
+                  background: 'var(--accent-primary)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.4)'
+                  flexShrink: 0
                 }}>
-                  <Check size={9} color="#ffffff" strokeWidth={3} />
+                  <Check size={10} color="#ffffff" strokeWidth={3} />
                 </div>
               )}
             </div>
@@ -88,22 +113,35 @@ export default function ThemePalettePicker({
         );
       })}
 
-      {/* 16th Slot: Custom Color Eyedropper */}
+      {/* 16th Card: Custom Hue Eyedropper */}
       <button
+        type="button"
         onClick={() => colorInputRef.current?.click()}
-        title="Custom Accent Color"
         style={{
-          aspectRatio: '1',
-          background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
-          border: customColor ? '2px solid var(--accent-primary)' : '1px solid var(--border-dim)',
+          background: 'var(--bg-card)',
+          border: customColor ? '2px solid var(--accent-primary)' : '1px dashed var(--border-subtle)',
           borderRadius: 'var(--radius-md)',
+          padding: '12px 14px',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          flexDirection: 'column',
+          gap: 10,
           cursor: 'pointer',
-          position: 'relative',
-          padding: 6,
-          transition: 'all 0.15s ease'
+          textAlign: 'left',
+          transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+          boxShadow: customColor ? '0 0 16px var(--accent-glow)' : 'var(--shadow-subtle)',
+          position: 'relative'
+        }}
+        onMouseEnter={(e) => {
+          if (!customColor) {
+            e.currentTarget.style.borderColor = 'var(--accent-primary)';
+            e.currentTarget.style.transform = 'translateY(-2px)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!customColor) {
+            e.currentTarget.style.borderColor = 'var(--border-subtle)';
+            e.currentTarget.style.transform = 'translateY(0)';
+          }
         }}
       >
         <input
@@ -113,33 +151,49 @@ export default function ThemePalettePicker({
           onChange={(e) => onSelectCustomColor(e.target.value)}
           style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
         />
+
+        {/* Custom Color Swatch Ribbon */}
         <div style={{
-          width: 36,
-          height: 36,
-          borderRadius: '50%',
-          background: customColor || (isDark ? '#27272a' : '#e4e4e7'),
+          width: '100%',
+          height: 28,
+          borderRadius: 6,
+          background: customColor || 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 50%, #3b82f6 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
-          position: 'relative'
+          boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.2), 0 2px 6px rgba(0,0,0,0.15)',
+          gap: 6
         }}>
-          <Pipette size={16} color={customColor ? '#ffffff' : 'var(--text-muted)'} />
+          <Pipette size={14} color="#ffffff" />
+        </div>
+
+        {/* Label & Active State */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%'
+        }}>
+          <span style={{
+            fontSize: 12.5,
+            fontWeight: customColor ? 600 : 500,
+            color: customColor ? 'var(--accent-primary)' : 'var(--text-main)'
+          }}>
+            {customColor ? customColor.toUpperCase() : 'Custom Hue'}
+          </span>
+
           {customColor && (
             <div style={{
-              position: 'absolute',
-              top: 2,
-              right: 2,
-              width: 14,
-              height: 14,
+              width: 16,
+              height: 16,
               borderRadius: '50%',
-              background: '#2563eb',
+              background: 'var(--accent-primary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.4)'
+              flexShrink: 0
             }}>
-              <Check size={9} color="#ffffff" strokeWidth={3} />
+              <Check size={10} color="#ffffff" strokeWidth={3} />
             </div>
           )}
         </div>
