@@ -11,11 +11,14 @@ import {
   HardDrive,
   Sparkles,
   Layers,
-  Wrench
+  Wrench,
+  Settings,
+  Sun,
+  Moon,
+  Palette
 } from 'lucide-react';
 
 import ThemePalettePicker from './ThemePalettePicker.jsx';
-import { Sun, Moon, Palette } from 'lucide-react';
 
 export default function SettingsModal({
   isOpen,
