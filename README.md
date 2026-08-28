@@ -22,6 +22,7 @@ Designed to connect natively to **Claude Desktop (Claude Pro)** and **Gemini** v
   - **Database Grid**: Sortable, filterable table view with editable statuses.
   - **Global Action Items**: Automatically extracts and aggregates `- [ ]` tasks from every note into a consolidated checklist.
 - 📅 **Daily Journaling**: Jump to or create today's daily note with one keystroke (`Alt + D`).
+- 🎨 **Adaptive Theming**: 3-way **Dark / Light / System** ambiance (follows the OS and reacts live to changes), 15 curated accent palettes plus a custom-colour picker. Preferences persist in `localStorage`; the theme is applied before first paint to avoid any flash. Toggle modes with `Alt + T` or from **Settings → Appearance**.
 - 📦 **Obsidian Vault 1-Click Export & Import**: Export all notes and attachments as a standard `.zip` vault, or import existing Markdown vaults.
 - 🧪 **Complete Test Suite**: 11 automated unit and integration tests passing in ~300ms (`npm test`).
 
@@ -30,8 +31,8 @@ Designed to connect natively to **Claude Desktop (Claude Pro)** and **Gemini** v
 ## 🚀 Quick Start
 
 ### 1. Requirements
-- Node.js v20+ (v22 installed)
-- MySQL 8.4+
+- Node.js v20+ (v22 recommended)
+- MySQL 8.4+ (MariaDB 10.6+ also works)
 
 ### 2. Environment Setup
 Copy `.env.example` to `.env` and configure with your MySQL or MariaDB credentials:
@@ -41,9 +42,10 @@ cp .env.example .env
 
 ```env
 PORT=3001
+HOST=127.0.0.1
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_NAME=ai_cortex
+DB_NAME=secondbrain
 DB_USER=your_db_user
 DB_PASS=your_db_password
 ```
@@ -59,25 +61,29 @@ npm run seed
 npm test
 ```
 
-### 5. Start SecondBrain
-```bash
-# Start server (serves web app and API on port 3001)
-npm start
+### 5. Start AI-Cortex
 
-# Or run live development mode (backend + Vite dev client):
+**Development** (backend + Vite dev client with hot reload):
+```bash
 npm run dev
 ```
+Open **http://127.0.0.1:5173** — the client proxies `/api` to the backend on port 3001.
 
-Open **http://127.0.0.1:3001** in your browser.
+**Production** (single server serving the built UI + API):
+```bash
+npm run build   # bundles the client into ./dist
+npm start
+```
+Open **http://127.0.0.1:3001**. The API binds to `HOST` (default `127.0.0.1`); set `HOST` / `ALLOWED_HOSTS` to expose it on a LAN.
 
 ---
 
 ## 🤖 Connecting Claude Desktop (Zero API Keys)
 
-1. Open SecondBrain in your browser.
-2. Click **AI & Settings** in the bottom-left sidebar.
-3. Click the **"1-Click Auto Install"** button (or copy the pre-filled JSON snippet into your `claude_desktop_config.json`).
-4. Restart Claude Desktop. You will now see SecondBrain tools (`secondbrain_search`, `secondbrain_read_note`, `secondbrain_create_note`, `secondbrain_get_backlinks`, etc.) available directly in Claude using your **existing Claude Pro subscription**!
+1. Open AI-Cortex in your browser.
+2. Click **Settings** in the bottom-left sidebar, then open the **AI Integrations** tab.
+3. Click the **"1-Click Auto Install"** button (or copy the pre-filled JSON snippet into your `claude_desktop_config.json`). A **"1-Click Enable for Gemini"** button does the same for `.agents/mcp_config.json` in this workspace.
+4. Restart Claude Desktop. You will now see the memory tools (`secondbrain_search`, `secondbrain_read_note`, `secondbrain_create_note`, `secondbrain_update_note`, `secondbrain_get_backlinks`, `secondbrain_list_recent`, `secondbrain_list_tasks`) available directly in Claude using your **existing Claude Pro subscription**!
 
 ---
 
@@ -89,4 +95,5 @@ Open **http://127.0.0.1:3001** in your browser.
 | `Alt + D` | Jump to today's Daily Journal note |
 | `Ctrl + N` / `Cmd + N` | Create a new note |
 | `Ctrl + Shift + C` | Copy AI Context Bundle for Claude.ai / Gemini web tabs |
+| `Alt + T` | Cycle theme: Dark → Light → System |
 | `[[` | Open wikilink auto-complete popup while writing |
