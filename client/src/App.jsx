@@ -19,11 +19,25 @@ export default function App() {
   const [selectedTag, setSelectedTag] = useState(null);
   const [health, setHealth] = useState(null);
 
-  // Theme Management: 'dark' (Obsidian Carbon) vs 'light' (Warm Alabaster Paper)
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('ai_cortex_theme') || 
-      (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  // Theme Mode: 'dark' | 'light' | 'system'
+  const [themeMode, setThemeMode] = useState(() => {
+    return localStorage.getItem('ai_cortex_theme_mode') || 'system';
   });
+
+  // System OS Dark Mode Listener
+  const [systemIsDark, setSystemIsDark] = useState(() => {
+    return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e) => setSystemIsDark(e.matches);
+    media.addEventListener('change', handler);
+    return () => media.removeEventListener('change', handler);
+  }, []);
+
+  const resolvedTheme = themeMode === 'system' ? (systemIsDark ? 'dark' : 'light') : themeMode;
 
   // Color Scheme Management: 16-palette selector
   const [colorScheme, setColorScheme] = useState(() => {
@@ -34,10 +48,10 @@ export default function App() {
   });
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('ai_cortex_theme', theme);
-    applyColorScheme(colorScheme, theme === 'dark', customColor);
-  }, [theme, colorScheme, customColor]);
+    document.documentElement.setAttribute('data-theme', resolvedTheme);
+    localStorage.setItem('ai_cortex_theme_mode', themeMode);
+    applyColorScheme(colorScheme, resolvedTheme === 'dark', customColor);
+  }, [themeMode, resolvedTheme, colorScheme, customColor]);
 
   const handleSelectScheme = useCallback((schemeId) => {
     setColorScheme(schemeId);
@@ -52,7 +66,11 @@ export default function App() {
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+    setThemeMode((prev) => {
+      if (prev === 'dark') return 'light';
+      if (prev === 'light') return 'system';
+      return 'dark';
+    });
   }, []);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -324,8 +342,9 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         health={health}
         onRefreshData={fetchData}
-        theme={theme}
-        onToggleTheme={toggleTheme}
+        themeMode={themeMode}
+        resolvedTheme={resolvedTheme}
+        onSelectThemeMode={setThemeMode}
         colorScheme={colorScheme}
         customColor={customColor}
         onSelectScheme={handleSelectScheme}

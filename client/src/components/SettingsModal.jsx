@@ -15,6 +15,7 @@ import {
   Settings,
   Sun,
   Moon,
+  Laptop,
   Palette
 } from 'lucide-react';
 
@@ -25,8 +26,9 @@ export default function SettingsModal({
   onClose,
   health,
   onRefreshData,
-  theme,
-  onToggleTheme,
+  themeMode = 'system',
+  resolvedTheme = 'dark',
+  onSelectThemeMode,
   colorScheme,
   customColor,
   onSelectScheme,
@@ -296,40 +298,91 @@ export default function SettingsModal({
                 borderRadius: 'var(--radius-md)'
               }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>Ambiance Mode</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Currently: {theme === 'dark' ? 'Obsidian Carbon Dark' : 'Warm Alabaster Archival Light'}
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>Theme Ambiance</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                    {themeMode === 'system'
+                      ? `System default (matching OS: ${resolvedTheme === 'dark' ? 'Dark' : 'Light'})`
+                      : themeMode === 'dark'
+                      ? 'Dark (Obsidian Deep Carbon)'
+                      : 'Light (Warm Alabaster Archival)'}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{
+                  display: 'flex',
+                  gap: 4,
+                  background: 'var(--bg-surface)',
+                  padding: 4,
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-dim)'
+                }}>
                   <button
-                    className="btn-primary"
+                    type="button"
                     style={{
-                      background: theme === 'dark' ? 'var(--accent-primary)' : 'var(--bg-surface)',
-                      color: theme === 'dark' ? '#ffffff' : 'var(--text-main)',
-                      border: '1px solid var(--border-dim)',
+                      background: themeMode === 'light' ? 'var(--accent-primary)' : 'transparent',
+                      color: themeMode === 'light' ? '#ffffff' : 'var(--text-secondary)',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm)',
                       fontSize: 12.5,
-                      padding: '6px 14px'
+                      fontWeight: 600,
+                      padding: '6px 13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      boxShadow: themeMode === 'light' ? '0 2px 8px var(--accent-glow)' : 'none',
+                      transition: 'all 0.15s ease'
                     }}
-                    onClick={() => theme !== 'dark' && onToggleTheme()}
-                  >
-                    <Moon size={14} />
-                    <span>Dark Mode</span>
-                  </button>
-                  <button
-                    className="btn-primary"
-                    style={{
-                      background: theme === 'light' ? 'var(--accent-primary)' : 'var(--bg-surface)',
-                      color: theme === 'light' ? '#ffffff' : 'var(--text-main)',
-                      border: '1px solid var(--border-dim)',
-                      fontSize: 12.5,
-                      padding: '6px 14px'
-                    }}
-                    onClick={() => theme !== 'light' && onToggleTheme()}
+                    onClick={() => onSelectThemeMode('light')}
                   >
                     <Sun size={14} />
-                    <span>Light Mode</span>
+                    <span>Light</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    style={{
+                      background: themeMode === 'dark' ? 'var(--accent-primary)' : 'transparent',
+                      color: themeMode === 'dark' ? '#ffffff' : 'var(--text-secondary)',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      padding: '6px 13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      boxShadow: themeMode === 'dark' ? '0 2px 8px var(--accent-glow)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onClick={() => onSelectThemeMode('dark')}
+                  >
+                    <Moon size={14} />
+                    <span>Dark</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    style={{
+                      background: themeMode === 'system' ? 'var(--accent-primary)' : 'transparent',
+                      color: themeMode === 'system' ? '#ffffff' : 'var(--text-secondary)',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      padding: '6px 13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      cursor: 'pointer',
+                      boxShadow: themeMode === 'system' ? '0 2px 8px var(--accent-glow)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onClick={() => onSelectThemeMode('system')}
+                  >
+                    <Laptop size={14} />
+                    <span>System</span>
                   </button>
                 </div>
               </div>
@@ -341,7 +394,7 @@ export default function SettingsModal({
                 </div>
                 <ThemePalettePicker
                   activeSchemeId={colorScheme}
-                  isDark={theme === 'dark'}
+                  isDark={resolvedTheme === 'dark'}
                   customColor={customColor}
                   onSelectScheme={onSelectScheme}
                   onSelectCustomColor={onSelectCustomColor}
