@@ -4,8 +4,22 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/brain.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SecondBrain — High-Performance Knowledge Engine</title>
+    <meta name="color-scheme" content="dark light" />
+    <title>AI-Cortex — Long-Term Memory Engine</title>
     <meta name="description" content="Self-hosted, sub-millisecond Notion and Obsidian hybrid with MySQL 8.4, bidirectional backlinks, and native MCP for Claude and Gemini." />
+    <!-- Set the theme before first paint to avoid a flash of the wrong colours -->
+    <script>
+      (function () {
+        try {
+          var mode = localStorage.getItem('ai_cortex_theme_mode') || 'system';
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var dark = mode === 'dark' || (mode === 'system' && prefersDark);
+          document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
     <!-- Google Fonts: Outfit & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

@@ -113,7 +113,17 @@ export default function ThemePalettePicker({
         );
       })}
 
-      {/* 16th Card: Custom Hue Eyedropper */}
+      {/* 16th Card: Custom Hue Eyedropper.
+          `display: contents` keeps the button in the grid while letting the
+          hidden <input> be a sibling rather than invalid interactive nesting. */}
+      <div style={{ display: 'contents' }}>
+      <input
+        type="color"
+        ref={colorInputRef}
+        value={customColor || '#6366f1'}
+        onChange={(e) => onSelectCustomColor(e.target.value)}
+        style={{ display: 'none' }}
+      />
       <button
         type="button"
         onClick={() => colorInputRef.current?.click()}
@@ -144,14 +154,6 @@ export default function ThemePalettePicker({
           }
         }}
       >
-        <input
-          type="color"
-          ref={colorInputRef}
-          value={customColor || '#6366f1'}
-          onChange={(e) => onSelectCustomColor(e.target.value)}
-          style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
-        />
-
         {/* Custom Color Swatch Ribbon */}
         <div style={{
           width: '100%',
@@ -198,6 +200,7 @@ export default function ThemePalettePicker({
           )}
         </div>
       </button>
+      </div>
     </div>
   );
 }

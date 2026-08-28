@@ -18,6 +18,9 @@ storage/attachments/*
 dist/
 build/
 
+# Machine-specific MCP client config (absolute paths; regenerated per install)
+.agents/
+
 # Logs & temp
 npm-debug.log*
 yarn-debug.log*

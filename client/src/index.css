@@ -25,9 +25,11 @@
 }
 
 /* --------------------------------------------------------------------------
-   DARK THEME: "Obsidian Deep Carbon"
+   DARK THEME: "Obsidian Deep Carbon"  (also the default before JS sets data-theme)
    -------------------------------------------------------------------------- */
+:root,
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg-app: #08090d;
   --bg-sidebar: #0e1017;
   --bg-surface: #131722;
@@ -74,6 +76,7 @@
    LIGHT THEME: "Warm Alabaster Archival Paper"
    -------------------------------------------------------------------------- */
 [data-theme="light"] {
+  color-scheme: light;
   --bg-app: #f9f8f5;
   --bg-sidebar: #f2f0eb;
   --bg-surface: #ffffff;

@@ -10,6 +10,19 @@ import { Trash2, RotateCcw, XCircle } from 'lucide-react';
 
 import { applyColorScheme } from './theme/palettes.js';
 
+// localStorage can throw (private mode, blocked site data); never let that break the app.
+const storage = {
+  get(key) {
+    try { return localStorage.getItem(key); } catch { return null; }
+  },
+  set(key, value) {
+    try { localStorage.setItem(key, value); } catch { /* ignore */ }
+  },
+  remove(key) {
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
+  }
+};
+
 export default function App() {
   const [notes, setNotes] = useState([]);
   const [activeNoteId, setActiveNoteId] = useState(null);
@@ -20,9 +33,7 @@ export default function App() {
   const [health, setHealth] = useState(null);
 
   // Theme Mode: 'dark' | 'light' | 'system'
-  const [themeMode, setThemeMode] = useState(() => {
-    return localStorage.getItem('ai_cortex_theme_mode') || 'system';
-  });
+  const [themeMode, setThemeMode] = useState(() => storage.get('ai_cortex_theme_mode') || 'system');
 
   // System OS Dark Mode Listener
   const [systemIsDark, setSystemIsDark] = useState(() => {
@@ -40,29 +51,25 @@ export default function App() {
   const resolvedTheme = themeMode === 'system' ? (systemIsDark ? 'dark' : 'light') : themeMode;
 
   // Color Scheme Management: 16-palette selector
-  const [colorScheme, setColorScheme] = useState(() => {
-    return localStorage.getItem('ai_cortex_color_scheme') || 'cobalt';
-  });
-  const [customColor, setCustomColor] = useState(() => {
-    return localStorage.getItem('ai_cortex_custom_color') || null;
-  });
+  const [colorScheme, setColorScheme] = useState(() => storage.get('ai_cortex_color_scheme') || 'cobalt');
+  const [customColor, setCustomColor] = useState(() => storage.get('ai_cortex_custom_color') || null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', resolvedTheme);
-    localStorage.setItem('ai_cortex_theme_mode', themeMode);
+    storage.set('ai_cortex_theme_mode', themeMode);
     applyColorScheme(colorScheme, resolvedTheme === 'dark', customColor);
   }, [themeMode, resolvedTheme, colorScheme, customColor]);
 
   const handleSelectScheme = useCallback((schemeId) => {
     setColorScheme(schemeId);
     setCustomColor(null);
-    localStorage.setItem('ai_cortex_color_scheme', schemeId);
-    localStorage.removeItem('ai_cortex_custom_color');
+    storage.set('ai_cortex_color_scheme', schemeId);
+    storage.remove('ai_cortex_custom_color');
   }, []);
 
   const handleSelectCustomColor = useCallback((hex) => {
     setCustomColor(hex);
-    localStorage.setItem('ai_cortex_custom_color', hex);
+    storage.set('ai_cortex_custom_color', hex);
   }, []);
 
   const toggleTheme = useCallback(() => {
