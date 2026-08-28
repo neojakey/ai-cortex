@@ -126,8 +126,8 @@ export default function SettingsModal({
         {/* Modal Header */}
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Cpu size={20} color="var(--accent-primary)" />
-            <h3 style={{ fontSize: 16, fontWeight: 600 }}>AI-Cortex Settings & Appearance</h3>
+            <Settings size={18} color="var(--accent-primary)" />
+            <h3 style={{ fontSize: 16, fontWeight: 600 }}>Settings</h3>
           </div>
           <button className="btn-icon" onClick={onClose}>
             <X size={16} />
@@ -135,12 +135,12 @@ export default function SettingsModal({
         </div>
 
         {/* Tab Navigation */}
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-dim)', padding: '0 24px' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-dim)', padding: '0 24px', gap: 8 }}>
           {[
-            { id: 'theme', label: 'Appearance & Themes' },
-            { id: 'ai', label: 'Claude & Gemini (Zero API Keys)' },
-            { id: 'db', label: 'MySQL 8.4 Telemetry' },
-            { id: 'vault', label: 'Obsidian Import/Export' }
+            { id: 'theme', label: 'Appearance' },
+            { id: 'ai', label: 'AI Integrations' },
+            { id: 'db', label: 'Database' },
+            { id: 'vault', label: 'Vault Sync' }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -150,10 +150,12 @@ export default function SettingsModal({
                 border: 'none',
                 borderBottom: activeTab === tab.id ? '2px solid var(--accent-primary)' : '2px solid transparent',
                 color: activeTab === tab.id ? 'var(--text-main)' : 'var(--text-muted)',
-                padding: '12px 16px',
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: 'pointer'
+                padding: '12px 18px',
+                fontSize: 13.5,
+                fontWeight: activeTab === tab.id ? 600 : 500,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
               }}
             >
               {tab.label}

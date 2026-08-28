@@ -887,8 +887,8 @@ button, input, textarea, select {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  width: 90%;
-  max-width: 680px;
+  width: 92%;
+  max-width: 760px;
   max-height: 85vh;
   overflow-y: auto;
   box-shadow: var(--shadow-modal);
