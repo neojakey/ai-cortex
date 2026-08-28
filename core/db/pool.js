@@ -11,7 +11,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 const poolConfig = {
   host: process.env.DB_HOST || '127.0.0.1',
   port: parseInt(process.env.DB_PORT || '3306', 10),
-  database: process.env.DB_NAME || 'secondbrain',
+  database: process.env.DB_NAME || 'ai_cortex',
   user: process.env.DB_USER || 'devuser',
   password: process.env.DB_PASS || '',
   waitForConnections: true,

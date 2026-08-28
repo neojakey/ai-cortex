@@ -45,7 +45,7 @@ PORT=3001
 HOST=127.0.0.1
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_NAME=secondbrain
+DB_NAME=ai_cortex
 DB_USER=your_db_user
 DB_PASS=your_db_password
 ```

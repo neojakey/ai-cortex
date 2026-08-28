@@ -420,7 +420,7 @@ export default function SettingsModal({
                 <div style={{ background: 'var(--bg-app)', padding: 16, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-dim)' }}>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Database Name</div>
                   <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>
-                    {health?.db?.database || 'secondbrain'}
+                    {health?.db?.database || 'ai_cortex'}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>
                     InnoDB engine • utf8mb4

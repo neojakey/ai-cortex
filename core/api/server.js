@@ -102,7 +102,7 @@ app.get('/api/health', async (req, res) => {
       db: {
         connected: dbCheck.ok,
         latencyMs: dbCheck.latencyMs,
-        database: process.env.DB_NAME || 'secondbrain'
+        database: process.env.DB_NAME || 'ai_cortex'
       },
       counts: {
         activeNotes: statusCounts['active'] || 0,
