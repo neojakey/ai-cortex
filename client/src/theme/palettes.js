@@ -314,12 +314,27 @@ export const COLOR_SCHEMES = [
 ];
 
 /**
+ * Computes high-contrast text color (black or white) based on background luminance
+ */
+export function getContrastColor(hexColor) {
+  if (!hexColor) return '#ffffff';
+  const cleanHex = hexColor.replace('#', '');
+  const r = parseInt(cleanHex.length === 3 ? cleanHex[0] + cleanHex[0] : cleanHex.substring(0, 2), 16) || 0;
+  const g = parseInt(cleanHex.length === 3 ? cleanHex[1] + cleanHex[1] : cleanHex.substring(2, 4), 16) || 0;
+  const b = parseInt(cleanHex.length === 3 ? cleanHex[2] + cleanHex[2] : cleanHex.substring(4, 6), 16) || 0;
+  const luminance = (r * 299 + g * 587 + b * 114) / 1000;
+  return luminance >= 145 ? '#090a0f' : '#ffffff';
+}
+
+/**
  * Apply color scheme variables dynamically to root element
  */
 export function applyColorScheme(schemeId, isDark = true, customHex = null) {
   const root = document.documentElement;
 
   if (customHex) {
+    const contrast = getContrastColor(customHex);
+    root.style.setProperty('--accent-contrast', contrast);
     root.style.setProperty('--accent-primary', customHex);
     root.style.setProperty('--accent-primary-gradient', `linear-gradient(135deg, ${customHex} 0%, ${customHex}dd 100%)`);
     root.style.setProperty('--accent-glow', `${customHex}44`);
@@ -331,7 +346,9 @@ export function applyColorScheme(schemeId, isDark = true, customHex = null) {
 
   const scheme = COLOR_SCHEMES.find((s) => s.id === schemeId) || COLOR_SCHEMES[0];
   const palette = isDark ? scheme.dark : scheme.light;
+  const contrast = getContrastColor(palette.primary);
 
+  root.style.setProperty('--accent-contrast', contrast);
   root.style.setProperty('--accent-primary', palette.primary);
   root.style.setProperty('--accent-primary-gradient', palette.gradient);
   root.style.setProperty('--accent-glow', palette.glow);

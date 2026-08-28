@@ -320,7 +320,7 @@ export default function SettingsModal({
                     type="button"
                     style={{
                       background: themeMode === 'light' ? 'var(--accent-primary)' : 'transparent',
-                      color: themeMode === 'light' ? '#ffffff' : 'var(--text-secondary)',
+                      color: themeMode === 'light' ? 'var(--accent-contrast, #ffffff)' : 'var(--text-secondary)',
                       border: 'none',
                       borderRadius: 'var(--radius-sm)',
                       fontSize: 12.5,
@@ -335,7 +335,7 @@ export default function SettingsModal({
                     }}
                     onClick={() => onSelectThemeMode('light')}
                   >
-                    <Sun size={14} />
+                    <Sun size={14} color={themeMode === 'light' ? 'var(--accent-contrast, #ffffff)' : 'var(--text-secondary)'} />
                     <span>Light</span>
                   </button>
 
@@ -343,7 +343,7 @@ export default function SettingsModal({
                     type="button"
                     style={{
                       background: themeMode === 'dark' ? 'var(--accent-primary)' : 'transparent',
-                      color: themeMode === 'dark' ? '#ffffff' : 'var(--text-secondary)',
+                      color: themeMode === 'dark' ? 'var(--accent-contrast, #ffffff)' : 'var(--text-secondary)',
                       border: 'none',
                       borderRadius: 'var(--radius-sm)',
                       fontSize: 12.5,
@@ -358,7 +358,7 @@ export default function SettingsModal({
                     }}
                     onClick={() => onSelectThemeMode('dark')}
                   >
-                    <Moon size={14} />
+                    <Moon size={14} color={themeMode === 'dark' ? 'var(--accent-contrast, #ffffff)' : 'var(--text-secondary)'} />
                     <span>Dark</span>
                   </button>
 
@@ -366,7 +366,7 @@ export default function SettingsModal({
                     type="button"
                     style={{
                       background: themeMode === 'system' ? 'var(--accent-primary)' : 'transparent',
-                      color: themeMode === 'system' ? '#ffffff' : 'var(--text-secondary)',
+                      color: themeMode === 'system' ? 'var(--accent-contrast, #ffffff)' : 'var(--text-secondary)',
                       border: 'none',
                       borderRadius: 'var(--radius-sm)',
                       fontSize: 12.5,
@@ -381,7 +381,7 @@ export default function SettingsModal({
                     }}
                     onClick={() => onSelectThemeMode('system')}
                   >
-                    <Laptop size={14} />
+                    <Laptop size={14} color={themeMode === 'system' ? 'var(--accent-contrast, #ffffff)' : 'var(--text-secondary)'} />
                     <span>System</span>
                   </button>
                 </div>
