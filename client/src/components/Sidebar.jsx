@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   FileText, 
   Calendar, 
@@ -13,8 +13,10 @@ import {
   Sparkles,
   Cpu,
   Sun,
-  Moon
+  Moon,
+  Palette
 } from 'lucide-react';
+import ThemePalettePicker from './ThemePalettePicker.jsx';
 
 export default function Sidebar({
   notes,
@@ -31,12 +33,18 @@ export default function Sidebar({
   onSelectTag,
   health,
   theme,
-  onToggleTheme
+  onToggleTheme,
+  colorScheme,
+  customColor,
+  onSelectScheme,
+  onSelectCustomColor
 }) {
+  const [showPalette, setShowPalette] = useState(false);
+
   return (
     <aside className="sidebar">
       {/* Brand Header */}
-      <div className="sidebar-header">
+      <div className="sidebar-header" style={{ position: 'relative' }}>
         <div className="brand-badge">
           <div className="icon-box">
             <Cpu size={18} color="#ffffff" />
@@ -50,6 +58,21 @@ export default function Sidebar({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Palette Color Swatch Trigger */}
+          <button
+            className="theme-toggle-btn"
+            onClick={() => setShowPalette((prev) => !prev)}
+            title="Choose Color Scheme"
+            aria-label="Choose color scheme"
+            style={{
+              borderColor: showPalette ? 'var(--accent-primary)' : 'var(--border-dim)',
+              color: showPalette ? 'var(--accent-primary)' : 'var(--text-secondary)'
+            }}
+          >
+            <Palette size={15} />
+          </button>
+
+          {/* Light / Dark Mode Toggle */}
           <button
             className="theme-toggle-btn"
             onClick={onToggleTheme}
@@ -66,6 +89,32 @@ export default function Sidebar({
             </div>
           )}
         </div>
+
+        {/* Floating Swatch Grid Popover */}
+        {showPalette && (
+          <div 
+            style={{ 
+              position: 'absolute', 
+              top: '100%', 
+              right: 14, 
+              marginTop: 8, 
+              zIndex: 100 
+            }}
+          >
+            <ThemePalettePicker
+              activeSchemeId={colorScheme}
+              isDark={theme === 'dark'}
+              customColor={customColor}
+              onSelectScheme={(id) => {
+                onSelectScheme(id);
+                setShowPalette(false);
+              }}
+              onSelectCustomColor={(hex) => {
+                onSelectCustomColor(hex);
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Quick Actions */}

@@ -14,8 +14,22 @@ import {
   Wrench
 } from 'lucide-react';
 
-export default function SettingsModal({ isOpen, onClose, health, onRefreshData }) {
-  const [activeTab, setActiveTab] = useState('ai'); // 'ai', 'db', 'vault'
+import ThemePalettePicker from './ThemePalettePicker.jsx';
+import { Sun, Moon, Palette } from 'lucide-react';
+
+export default function SettingsModal({
+  isOpen,
+  onClose,
+  health,
+  onRefreshData,
+  theme,
+  onToggleTheme,
+  colorScheme,
+  customColor,
+  onSelectScheme,
+  onSelectCustomColor
+}) {
+  const [activeTab, setActiveTab] = useState('ai'); // 'ai', 'theme', 'db', 'vault'
   const [mcpConfig, setMcpConfig] = useState(null);
   const [copiedClaude, setCopiedClaude] = useState(false);
   const [copiedGemini, setCopiedGemini] = useState(false);
@@ -124,6 +138,7 @@ export default function SettingsModal({ isOpen, onClose, health, onRefreshData }
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-dim)', padding: '0 24px' }}>
           {[
             { id: 'ai', label: 'Claude & Gemini (Zero API Keys)' },
+            { id: 'theme', label: 'Color Schemes & Modes' },
             { id: 'db', label: 'MySQL 8.4 Telemetry' },
             { id: 'vault', label: 'Obsidian Import/Export' }
           ].map((tab) => (
@@ -248,6 +263,86 @@ export default function SettingsModal({ isOpen, onClose, health, onRefreshData }
                 }}>
                   {mcpConfig ? JSON.stringify(mcpConfig.geminiConfig, null, 2) : 'Loading...'}
                 </pre>
+              </div>
+            </>
+          )}
+
+          {/* TAB: Color Schemes & Theme Modes */}
+          {activeTab === 'theme' && (
+            <>
+              <div>
+                <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)', marginBottom: 6 }}>
+                  Visual Identity & Palette Harmony
+                </h4>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                  Choose your base ambiance (Obsidian Deep Carbon or Warm Alabaster Archival Paper)
+                  and select from 15 curated color palettes or use the eyedropper for custom branding.
+                </p>
+              </div>
+
+              {/* Mode Toggle Banner */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 18px',
+                background: 'var(--bg-app)',
+                border: '1px solid var(--border-dim)',
+                borderRadius: 'var(--radius-md)'
+              }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>Ambiance Mode</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Currently: {theme === 'dark' ? 'Obsidian Carbon Dark' : 'Warm Alabaster Archival Light'}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="btn-primary"
+                    style={{
+                      background: theme === 'dark' ? 'var(--accent-primary)' : 'var(--bg-surface)',
+                      color: theme === 'dark' ? '#ffffff' : 'var(--text-main)',
+                      border: '1px solid var(--border-dim)',
+                      fontSize: 12.5,
+                      padding: '6px 14px'
+                    }}
+                    onClick={() => theme !== 'dark' && onToggleTheme()}
+                  >
+                    <Moon size={14} />
+                    <span>Dark Mode</span>
+                  </button>
+                  <button
+                    className="btn-primary"
+                    style={{
+                      background: theme === 'light' ? 'var(--accent-primary)' : 'var(--bg-surface)',
+                      color: theme === 'light' ? '#ffffff' : 'var(--text-main)',
+                      border: '1px solid var(--border-dim)',
+                      fontSize: 12.5,
+                      padding: '6px 14px'
+                    }}
+                    onClick={() => theme !== 'light' && onToggleTheme()}
+                  >
+                    <Sun size={14} />
+                    <span>Light Mode</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 16-Swatch Color Scheme Grid */}
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 10 }}>
+                  Select Palette Harmony (16 Schemes)
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <ThemePalettePicker
+                    activeSchemeId={colorScheme}
+                    isDark={theme === 'dark'}
+                    customColor={customColor}
+                    onSelectScheme={onSelectScheme}
+                    onSelectCustomColor={onSelectCustomColor}
+                  />
+                </div>
               </div>
             </>
           )}

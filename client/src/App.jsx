@@ -8,6 +8,8 @@ import SearchPalette from './components/SearchPalette.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import { Trash2, RotateCcw, XCircle } from 'lucide-react';
 
+import { applyColorScheme } from './theme/palettes.js';
+
 export default function App() {
   const [notes, setNotes] = useState([]);
   const [activeNoteId, setActiveNoteId] = useState(null);
@@ -23,10 +25,31 @@ export default function App() {
       (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
   });
 
+  // Color Scheme Management: 16-palette selector
+  const [colorScheme, setColorScheme] = useState(() => {
+    return localStorage.getItem('ai_cortex_color_scheme') || 'cobalt';
+  });
+  const [customColor, setCustomColor] = useState(() => {
+    return localStorage.getItem('ai_cortex_custom_color') || null;
+  });
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('ai_cortex_theme', theme);
-  }, [theme]);
+    applyColorScheme(colorScheme, theme === 'dark', customColor);
+  }, [theme, colorScheme, customColor]);
+
+  const handleSelectScheme = useCallback((schemeId) => {
+    setColorScheme(schemeId);
+    setCustomColor(null);
+    localStorage.setItem('ai_cortex_color_scheme', schemeId);
+    localStorage.removeItem('ai_cortex_custom_color');
+  }, []);
+
+  const handleSelectCustomColor = useCallback((hex) => {
+    setCustomColor(hex);
+    localStorage.setItem('ai_cortex_custom_color', hex);
+  }, []);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
@@ -228,6 +251,10 @@ export default function App() {
         health={health}
         theme={theme}
         onToggleTheme={toggleTheme}
+        colorScheme={colorScheme}
+        customColor={customColor}
+        onSelectScheme={handleSelectScheme}
+        onSelectCustomColor={handleSelectCustomColor}
       />
 
       {/* Main View Router */}
@@ -303,6 +330,12 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         health={health}
         onRefreshData={fetchData}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        colorScheme={colorScheme}
+        customColor={customColor}
+        onSelectScheme={handleSelectScheme}
+        onSelectCustomColor={handleSelectCustomColor}
       />
     </div>
   );
