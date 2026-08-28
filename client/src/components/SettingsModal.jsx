@@ -29,7 +29,7 @@ export default function SettingsModal({
   onSelectScheme,
   onSelectCustomColor
 }) {
-  const [activeTab, setActiveTab] = useState('ai'); // 'ai', 'theme', 'db', 'vault'
+  const [activeTab, setActiveTab] = useState('theme'); // 'theme', 'ai', 'db', 'vault'
   const [mcpConfig, setMcpConfig] = useState(null);
   const [copiedClaude, setCopiedClaude] = useState(false);
   const [copiedGemini, setCopiedGemini] = useState(false);
@@ -127,7 +127,7 @@ export default function SettingsModal({
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Cpu size={20} color="var(--accent-primary)" />
-            <h3 style={{ fontSize: 16, fontWeight: 600 }}>SecondBrain Settings & AI Integrations</h3>
+            <h3 style={{ fontSize: 16, fontWeight: 600 }}>AI-Cortex Settings & Appearance</h3>
           </div>
           <button className="btn-icon" onClick={onClose}>
             <X size={16} />
@@ -137,8 +137,8 @@ export default function SettingsModal({
         {/* Tab Navigation */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-dim)', padding: '0 24px' }}>
           {[
+            { id: 'theme', label: 'Appearance & Themes' },
             { id: 'ai', label: 'Claude & Gemini (Zero API Keys)' },
-            { id: 'theme', label: 'Color Schemes & Modes' },
             { id: 'db', label: 'MySQL 8.4 Telemetry' },
             { id: 'vault', label: 'Obsidian Import/Export' }
           ].map((tab) => (

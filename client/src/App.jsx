@@ -249,12 +249,6 @@ export default function App() {
         selectedTag={selectedTag}
         onSelectTag={setSelectedTag}
         health={health}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        colorScheme={colorScheme}
-        customColor={customColor}
-        onSelectScheme={handleSelectScheme}
-        onSelectCustomColor={handleSelectCustomColor}
       />
 
       {/* Main View Router */}

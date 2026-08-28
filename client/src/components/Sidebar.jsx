@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
   FileText, 
   Calendar, 
@@ -11,12 +11,8 @@ import {
   Trash2, 
   Tag, 
   Sparkles,
-  Cpu,
-  Sun,
-  Moon,
-  Palette
+  Cpu
 } from 'lucide-react';
-import ThemePalettePicker from './ThemePalettePicker.jsx';
 
 export default function Sidebar({
   notes,
@@ -31,88 +27,26 @@ export default function Sidebar({
   tags,
   selectedTag,
   onSelectTag,
-  health,
-  theme,
-  onToggleTheme,
-  colorScheme,
-  customColor,
-  onSelectScheme,
-  onSelectCustomColor
+  health
 }) {
-  const [showPalette, setShowPalette] = useState(false);
-
   return (
     <aside className="sidebar">
       {/* Brand Header */}
-      <div className="sidebar-header" style={{ position: 'relative' }}>
+      <div className="sidebar-header">
         <div className="brand-badge">
           <div className="icon-box">
             <Cpu size={18} color="#ffffff" />
           </div>
-          <div>
-            <div className="brand-title">
-              <span>AI-Cortex</span>
-              <span className="brand-title-dot" />
-            </div>
+          <div className="brand-title">
+            <span>AI-Cortex</span>
+            <span className="brand-title-dot" />
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {/* Palette Color Swatch Trigger */}
-          <button
-            className="theme-toggle-btn"
-            onClick={() => setShowPalette((prev) => !prev)}
-            title="Choose Color Scheme"
-            aria-label="Choose color scheme"
-            style={{
-              borderColor: showPalette ? 'var(--accent-primary)' : 'var(--border-dim)',
-              color: showPalette ? 'var(--accent-primary)' : 'var(--text-secondary)'
-            }}
-          >
-            <Palette size={15} />
-          </button>
-
-          {/* Light / Dark Mode Toggle */}
-          <button
-            className="theme-toggle-btn"
-            onClick={onToggleTheme}
-            title={theme === 'dark' ? 'Switch to Warm Alabaster Light Mode (Alt+T)' : 'Switch to Obsidian Dark Mode (Alt+T)'}
-            aria-label="Toggle color theme"
-          >
-            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-          </button>
-
-          {health && (
-            <div className="latency-pill" title={`MySQL 8.4 connection latency: ${health.db?.latencyMs}ms`}>
-              <span className="latency-dot" />
-              <span>{health.db?.latencyMs ? `${health.db.latencyMs}ms` : 'ok'}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Floating Swatch Grid Popover */}
-        {showPalette && (
-          <div 
-            style={{ 
-              position: 'absolute', 
-              top: '100%', 
-              right: 14, 
-              marginTop: 8, 
-              zIndex: 100 
-            }}
-          >
-            <ThemePalettePicker
-              activeSchemeId={colorScheme}
-              isDark={theme === 'dark'}
-              customColor={customColor}
-              onSelectScheme={(id) => {
-                onSelectScheme(id);
-                setShowPalette(false);
-              }}
-              onSelectCustomColor={(hex) => {
-                onSelectCustomColor(hex);
-              }}
-            />
+        {health && (
+          <div className="latency-pill" title={`MySQL 8.4 connection latency: ${health.db?.latencyMs}ms`}>
+            <span className="latency-dot" />
+            <span>{health.db?.latencyMs ? `${health.db.latencyMs}ms` : 'online'}</span>
           </div>
         )}
       </div>
@@ -248,7 +182,7 @@ export default function Sidebar({
       <div className="sidebar-footer">
         <button className="footer-btn" onClick={onOpenSettings}>
           <Settings size={15} />
-          <span>AI & Settings</span>
+          <span>Settings & Appearance</span>
         </button>
 
         <button 
