@@ -1,6 +1,16 @@
 import crypto from 'node:crypto';
 import { pool } from '../db/pool.js';
-import { slugify, extractWikilinks, extractHashtags, extractTasks, markdownToPlaintext } from './parser.js';
+import { slugify, extractWikilinks, extractHashtags, extractTasks, markdownToPlaintext, toBooleanFulltextQuery } from './parser.js';
+
+const PRUNE_ORPHAN_TAGS_SQL =
+  `DELETE t FROM tags t LEFT JOIN note_tags nt ON nt.tag_id = t.id WHERE nt.tag_id IS NULL`;
+
+function normalizeCustomTags(customTags) {
+  return (Array.isArray(customTags) ? customTags : [])
+    .filter((t) => typeof t === 'string')
+    .map((t) => t.toLowerCase().trim())
+    .filter(Boolean);
+}
 
 export class NoteService {
   /**
@@ -45,7 +55,7 @@ export class NoteService {
 
       // 2. Process Tags (both extracted #tags and explicitly passed tags)
       const extractedTags = extractHashtags(content);
-      const allTags = Array.from(new Set([...extractedTags, ...customTags.map((t) => t.toLowerCase().trim())]));
+      const allTags = Array.from(new Set([...extractedTags, ...normalizeCustomTags(customTags)]));
 
       for (const tagName of allTags) {
         if (!tagName) continue;
@@ -81,7 +91,7 @@ export class NoteService {
       );
 
       // 5. Process Notion-style Properties
-      if (properties && typeof properties === 'object') {
+      if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
         for (const [propName, propVal] of Object.entries(properties)) {
           if (!propName || propVal === undefined) continue;
           const propType = typeof propVal === 'number' ? 'number' : typeof propVal === 'boolean' ? 'checkbox' : 'text';
@@ -124,6 +134,10 @@ export class NoteService {
     const existing = await this.getNoteById(id);
     if (!existing) {
       throw new Error(`Note not found: ${id}`);
+    }
+
+    if (title !== undefined && typeof title !== 'string') {
+      throw new Error('Note title must be a string');
     }
 
     const conn = await pool.getConnection();
@@ -176,7 +190,7 @@ export class NoteService {
         const extractedTags = extractHashtags(newContent);
         const tagsToSync = Array.from(new Set([
           ...extractedTags,
-          ...(customTags || []).map((t) => t.toLowerCase().trim())
+          ...normalizeCustomTags(customTags)
         ]));
 
         await conn.query(`DELETE FROM note_tags WHERE note_id = ?`, [id]);
@@ -192,6 +206,9 @@ export class NoteService {
             );
           }
         }
+
+        // Drop tags that no longer belong to any note
+        await conn.query(PRUNE_ORPHAN_TAGS_SQL);
       }
 
       // 4. Update Wikilinks if content changed
@@ -221,7 +238,7 @@ export class NoteService {
       }
 
       // 5. Update Properties if passed
-      if (properties && typeof properties === 'object') {
+      if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
         for (const [propName, propVal] of Object.entries(properties)) {
           if (!propName) continue;
           if (propVal === null) {
@@ -320,6 +337,7 @@ export class NoteService {
        WHERE (nl.target_note_id = ? OR nl.target_slug = ?)
          AND n.id != ?
          AND n.status != 'trash'
+       GROUP BY n.id, n.title, n.slug, n.status, n.updated_at
        ORDER BY n.updated_at DESC`,
       [noteId, row.slug, noteId]
     );
@@ -397,8 +415,11 @@ export class NoteService {
     }
 
     if (search && search.trim()) {
-      whereClauses.push(`MATCH(n.title, n.content_text) AGAINST(? IN BOOLEAN MODE)`);
-      params.push(`+${search.trim()}*`);
+      const booleanQuery = toBooleanFulltextQuery(search);
+      if (booleanQuery) {
+        whereClauses.push(`MATCH(n.title, n.content_text) AGAINST(? IN BOOLEAN MODE)`);
+        params.push(booleanQuery);
+      }
     }
 
     const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
@@ -486,7 +507,8 @@ export class NoteService {
     const [rows] = await pool.query(
       `SELECT id, title, slug, content, updated_at
        FROM notes
-       WHERE status = 'active' AND content LIKE '%- [%'
+       WHERE status = 'active'
+         AND (content LIKE '%[ ]%' OR content LIKE '%[x]%' OR content LIKE '%[X]%')
        ORDER BY updated_at DESC
        LIMIT ?`,
       [Number(limit)]
@@ -519,6 +541,9 @@ export class NoteService {
   async deleteNote(id, { permanent = false } = {}) {
     if (permanent) {
       const [res] = await pool.query(`DELETE FROM notes WHERE id = ?`, [id]);
+      if (res.affectedRows > 0) {
+        await pool.query(PRUNE_ORPHAN_TAGS_SQL);
+      }
       return res.affectedRows > 0;
     } else {
       const [res] = await pool.query(`UPDATE notes SET status = 'trash' WHERE id = ?`, [id]);

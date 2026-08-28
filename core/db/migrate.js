@@ -107,7 +107,9 @@ export async function runMigrations() {
     `);
 
     // Ensure attachments storage directory exists
-    const storageDir = path.resolve(__dirname, '../../storage/attachments');
+    const storageDir = process.env.STORAGE_DIR
+      ? path.resolve(process.cwd(), process.env.STORAGE_DIR)
+      : path.resolve(__dirname, '../../storage/attachments');
     if (!fs.existsSync(storageDir)) {
       fs.mkdirSync(storageDir, { recursive: true });
     }

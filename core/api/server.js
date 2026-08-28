@@ -19,10 +19,59 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || '127.0.0.1';
 
-app.use(cors({ origin: true, credentials: true }));
+// Only browser origins on the loopback interface may drive this API.
+const LOOPBACK_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+
+// Host header allow-list (anti-DNS-rebinding). Extendable via env for LAN use.
+const ALLOWED_HOSTS = new Set(
+  ['127.0.0.1', 'localhost', '::1', '[::1]']
+    .concat(
+      (process.env.ALLOWED_HOSTS || '')
+        .split(',')
+        .map((h) => h.trim().toLowerCase())
+        .filter(Boolean)
+    )
+    .concat(process.env.HOST ? [process.env.HOST.toLowerCase()] : [])
+);
+
+app.use(cors({
+  origin(origin, cb) {
+    // Non-browser clients (no Origin) and loopback origins may read responses.
+    if (!origin || LOOPBACK_ORIGIN.test(origin)) return cb(null, true);
+    return cb(null, false);
+  }
+}));
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+
+// Anti-DNS-rebinding: reject requests whose Host header isn't a known loopback name.
+app.use((req, res, next) => {
+  const hostname = (req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+  if (hostname && !ALLOWED_HOSTS.has(hostname)) {
+    return res.status(403).json({ error: 'Host not allowed' });
+  }
+  next();
+});
+
+// CSRF guard: block state-changing requests a browser flags as cross-site/cross-origin.
+const CSRF_SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+app.use((req, res, next) => {
+  if (CSRF_SAFE_METHODS.has(req.method)) return next();
+
+  const site = req.headers['sec-fetch-site'];
+  if (site && site !== 'same-origin' && site !== 'none') {
+    return res.status(403).json({ error: 'Cross-site request blocked' });
+  }
+
+  const origin = req.headers.origin;
+  if (origin && !LOOPBACK_ORIGIN.test(origin)) {
+    return res.status(403).json({ error: 'Cross-origin request blocked' });
+  }
+
+  next();
+});
 
 // Multer memory storage for uploads
 const upload = multer({
@@ -169,6 +218,7 @@ app.delete('/api/notes/:id', async (req, res) => {
   try {
     const permanent = req.query.permanent === 'true';
     const success = await noteService.deleteNote(req.params.id, { permanent });
+    if (!success) return res.status(404).json({ error: 'Note not found' });
     res.json({ success });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -179,6 +229,7 @@ app.delete('/api/notes/:id', async (req, res) => {
 app.post('/api/notes/:id/restore', async (req, res) => {
   try {
     const success = await noteService.restoreNote(req.params.id);
+    if (!success) return res.status(404).json({ error: 'Note not found' });
     res.json({ success });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -303,7 +354,12 @@ app.get('/api/vault/export', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="SecondBrain-Vault-${timestamp}.zip"`);
     await exportService.exportVaultToZip(res);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[vault/export] failed:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.destroy(err);
+    }
   }
 });
 
@@ -441,27 +497,37 @@ const distPath = path.resolve(__dirname, '../../dist');
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'Not found' });
+    }
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 
 // Graceful shutdown handling
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM signal received: closing HTTP server and MySQL pool');
-  await pool.end();
-  process.exit(0);
-});
+let serverRef = null;
+let shuttingDown = false;
 
-process.on('SIGINT', async () => {
-  console.log('SIGINT signal received: closing HTTP server and MySQL pool');
-  await pool.end();
-  process.exit(0);
-});
-
-export function startServer(port = PORT) {
-  return app.listen(port, () => {
-    console.log(`[SecondBrain API] Server listening on http://127.0.0.1:${port}`);
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} signal received: closing HTTP server and MySQL pool`);
+  await new Promise((resolve) => {
+    if (serverRef) serverRef.close(() => resolve());
+    else resolve();
   });
+  await pool.end();
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+export function startServer(port = PORT, host = HOST) {
+  serverRef = app.listen(port, host, () => {
+    console.log(`[SecondBrain API] Server listening on http://${host}:${port}`);
+  });
+  return serverRef;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

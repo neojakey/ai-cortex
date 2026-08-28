@@ -38,7 +38,7 @@ test('API: Notes CRUD and search workflow', async () => {
   // 1. Create note via API
   const createRes = await fetch(`${baseUrl}/api/notes`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Origin: baseUrl },
     body: JSON.stringify({
       title: 'API Test Note',
       content: 'Testing REST endpoints with #api-tag and a task:\n- [ ] Review API docs',
@@ -69,7 +69,10 @@ test('API: Notes CRUD and search workflow', async () => {
   assert.ok(tasksData.tasks.some((t) => t.noteId === noteId && t.text === 'Review API docs'));
 
   // 5. Clean up note
-  const delRes = await fetch(`${baseUrl}/api/notes/${noteId}?permanent=true`, { method: 'DELETE' });
+  const delRes = await fetch(`${baseUrl}/api/notes/${noteId}?permanent=true`, {
+    method: 'DELETE',
+    headers: { Origin: baseUrl }
+  });
   assert.equal(delRes.status, 200);
 });
 
@@ -79,6 +82,6 @@ test('API: Settings MCP Config returns OS-specific paths', async () => {
   const data = await res.json();
 
   assert.ok(data.mcpScriptPath);
-  assert.ok(data.claudeConfig.mcpServers.secondbrain);
+  assert.ok(data.claudeConfig.mcpServers['ai-cortex']);
   assert.ok(data.configPaths.currentOS);
 });

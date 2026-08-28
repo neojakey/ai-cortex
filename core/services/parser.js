@@ -115,6 +115,22 @@ export function extractTasks(content) {
 }
 
 /**
+ * Turn a free-text query into a safe MySQL FULLTEXT BOOLEAN MODE expression.
+ * Strips boolean operators so arbitrary user input can't trigger a syntax error.
+ * @param {string} query
+ * @returns {string} e.g. "+foo* +bar*" (empty string if nothing usable)
+ */
+export function toBooleanFulltextQuery(query) {
+  if (!query || typeof query !== 'string') return '';
+  const cleanWords = query
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.replace(/[+\-><()~*"@]+/g, ''))
+    .filter(Boolean);
+  return cleanWords.map((w) => `+${w}*`).join(' ');
+}
+
+/**
  * Convert Markdown text to clean plaintext for MySQL FULLTEXT indexing
  * @param {string} markdown
  * @returns {string}

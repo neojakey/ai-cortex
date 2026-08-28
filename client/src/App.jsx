@@ -42,13 +42,11 @@ export default function App() {
       setHealth(healthData);
 
       // Default select first note if none selected
-      if (!activeNoteId && notesData.notes && notesData.notes.length > 0) {
-        setActiveNoteId(notesData.notes[0].id);
-      }
+      setActiveNoteId((cur) => cur || (notesData.notes && notesData.notes[0]?.id) || null);
     } catch (err) {
       console.error('Error fetching SecondBrain data:', err);
     }
-  }, [selectedTag, activeNoteId]);
+  }, [selectedTag]);
 
   useEffect(() => {
     fetchData();
@@ -77,7 +75,7 @@ export default function App() {
   }, [activeNoteId]);
 
   // Create a new note
-  const handleCreateNote = async () => {
+  const handleCreateNote = useCallback(async () => {
     try {
       const res = await fetch('/api/notes', {
         method: 'POST',
@@ -97,10 +95,10 @@ export default function App() {
     } catch (err) {
       console.error('Failed to create note:', err);
     }
-  };
+  }, [fetchData]);
 
   // Jump to or create today's daily note
-  const handleOpenDaily = async () => {
+  const handleOpenDaily = useCallback(async () => {
     try {
       const today = new Date().toISOString().slice(0, 10);
       const res = await fetch(`/api/daily?date=${today}`);
@@ -113,7 +111,7 @@ export default function App() {
     } catch (err) {
       console.error('Failed to load daily note:', err);
     }
-  };
+  }, [fetchData]);
 
   // Update note
   const handleUpdateNote = async (id, updatePayload) => {
@@ -150,18 +148,16 @@ export default function App() {
   };
 
   // Soft delete note to trash
-  const handleDeleteNote = async (id) => {
+  const handleDeleteNote = useCallback(async (id) => {
     try {
       await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+      // Clear selection if the deleted note was active; fetchData re-selects the first note.
+      setActiveNoteId((cur) => (cur === id ? null : cur));
       await fetchData();
-      if (activeNoteId === id) {
-        const remaining = notes.filter((n) => n.id !== id);
-        setActiveNoteId(remaining.length > 0 ? remaining[0].id : null);
-      }
     } catch (err) {
       console.error('Failed to delete note:', err);
     }
-  };
+  }, [fetchData]);
 
   // Global Keyboard Shortcuts
   useEffect(() => {
@@ -187,7 +183,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleOpenDaily, handleCreateNote]);
 
   return (
     <div className="app-container">

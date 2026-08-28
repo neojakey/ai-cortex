@@ -1,4 +1,5 @@
 import { pool } from '../db/pool.js';
+import { toBooleanFulltextQuery } from './parser.js';
 
 export class SearchService {
   /**
@@ -12,14 +13,10 @@ export class SearchService {
     }
 
     const trimmed = query.trim();
-    const cleanWords = trimmed
-      .split(/\s+/)
-      .map((w) => w.replace(/[+\-><()~*\"@]+/g, ''))
-      .filter(Boolean);
+    const booleanQuery = toBooleanFulltextQuery(trimmed);
 
-    if (!cleanWords.length) return [];
+    if (!booleanQuery) return [];
 
-    const booleanQuery = cleanWords.map((w) => `+${w}*`).join(' ');
     const likePattern = `%${trimmed}%`;
 
     // High performance query: combines FULLTEXT relevance score with fallback LIKE match

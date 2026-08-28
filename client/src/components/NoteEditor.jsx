@@ -21,18 +21,11 @@ export default function NoteEditor({
   onDeleteNote,
   onSelectNote
 }) {
-  if (!note) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-        Select a note or create a new one to begin.
-      </div>
-    );
-  }
-
-  const [title, setTitle] = useState(note.title);
-  const [content, setContent] = useState(note.content || '');
-  const [status, setStatus] = useState(note.status || 'active');
-  const [dueDate, setDueDate] = useState(note.dueDate ? note.dueDate.slice(0, 10) : '');
+  // Hooks MUST be called unconditionally at the top level
+  const [title, setTitle] = useState(note?.title || '');
+  const [content, setContent] = useState(note?.content || '');
+  const [status, setStatus] = useState(note?.status || 'active');
+  const [dueDate, setDueDate] = useState(note?.dueDate ? note.dueDate.slice(0, 10) : '');
   const [copiedContext, setCopiedContext] = useState(false);
   const [saveStatus, setSaveStatus] = useState('Saved');
   const [isUploading, setIsUploading] = useState(false);
@@ -46,17 +39,24 @@ export default function NoteEditor({
 
   // Sync state when active note changes
   useEffect(() => {
-    setTitle(note.title);
+    if (!note) return;
+    setTitle(note.title || '');
     setContent(note.content || '');
     setStatus(note.status || 'active');
     setDueDate(note.dueDate ? note.dueDate.slice(0, 10) : '');
     setSaveStatus('Saved');
     setShowWikilinks(false);
-  }, [note.id]);
+  }, [note?.id]);
 
   // Debounced auto-save
   useEffect(() => {
-    if (title === note.title && content === note.content && status === note.status && dueDate === (note.dueDate ? note.dueDate.slice(0, 10) : '')) {
+    if (!note) return;
+    if (
+      title === note.title &&
+      content === note.content &&
+      status === note.status &&
+      dueDate === (note.dueDate ? note.dueDate.slice(0, 10) : '')
+    ) {
       return;
     }
 
@@ -76,7 +76,59 @@ export default function NoteEditor({
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [title, content, status, dueDate]);
+  }, [title, content, status, dueDate, note]);
+
+  // Copy AI context bundle for Claude / Gemini web apps
+  const copyAiContext = () => {
+    const backlinksText = note && note.backlinks && note.backlinks.length
+      ? note.backlinks.map((b) => `- [[${b.title}]]`).join('\n')
+      : 'None';
+
+    const tagsText = note && note.tags && note.tags.length
+      ? note.tags.map((t) => `#${t}`).join(', ')
+      : 'None';
+
+    const promptBundle = `# Note: ${title}
+Status: ${status} | Due Date: ${dueDate || 'None'}
+Hashtags: ${tagsText}
+
+## Content
+${content}
+
+---
+## Linked Backlinks in SecondBrain
+${backlinksText}
+
+---
+[SecondBrain Context Bundle: You can answer questions, summarize, or propose edits to this note]
+`;
+
+    navigator.clipboard.writeText(promptBundle);
+    setCopiedContext(true);
+    setTimeout(() => setCopiedContext(false), 2500);
+  };
+
+  // Cmd/Ctrl + Shift + C -> copy AI context bundle
+  useEffect(() => {
+    if (!note) return;
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        copyAiContext();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [note, title, status, dueDate, content]);
+
+  // Now conditional render can safely happen after all hooks
+  if (!note) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+        Select a note or create a new one to begin.
+      </div>
+    );
+  }
 
   // Handle textarea typing for wikilink detection
   const handleContentChange = (e) => {
@@ -113,36 +165,6 @@ export default function NoteEditor({
 
     // Trigger update
     onUpdateNote(note.id, { content: newContent });
-  };
-
-  // Copy AI context bundle for Claude / Gemini web apps
-  const copyAiContext = () => {
-    const backlinksText = note.backlinks && note.backlinks.length
-      ? note.backlinks.map((b) => `- [[${b.title}]]`).join('\n')
-      : 'None';
-
-    const tagsText = note.tags && note.tags.length
-      ? note.tags.map((t) => `#${t}`).join(', ')
-      : 'None';
-
-    const promptBundle = `# Note: ${title}
-Status: ${status} | Due Date: ${dueDate || 'None'}
-Hashtags: ${tagsText}
-
-## Content
-${content}
-
----
-## Linked Backlinks in SecondBrain
-${backlinksText}
-
----
-[SecondBrain Context Bundle: You can answer questions, summarize, or propose edits to this note]
-`;
-
-    navigator.clipboard.writeText(promptBundle);
-    setCopiedContext(true);
-    setTimeout(() => setCopiedContext(false), 2500);
   };
 
   // Handle Attachment Upload

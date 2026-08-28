@@ -7,7 +7,9 @@ import { pool } from '../db/pool.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DEFAULT_STORAGE_DIR = path.resolve(__dirname, '../../storage/attachments');
+const DEFAULT_STORAGE_DIR = process.env.STORAGE_DIR
+  ? path.resolve(process.cwd(), process.env.STORAGE_DIR)
+  : path.resolve(__dirname, '../../storage/attachments');
 
 export class AttachmentService {
   constructor(storageDir = DEFAULT_STORAGE_DIR) {
