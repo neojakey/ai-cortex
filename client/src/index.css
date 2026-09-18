@@ -608,6 +608,10 @@ button, input, textarea, select {
   cursor: pointer;
   transition: all var(--transition-fast);
 }
+.btn-icon.active {
+  color: var(--accent-primary);
+  background: var(--bg-surface-hover);
+}
 .btn-icon:hover {
   border-color: var(--border-subtle);
   color: var(--text-main);
@@ -654,6 +658,10 @@ button, input, textarea, select {
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+.editor-content-container.is-full-width {
+  max-width: none;
 }
 
 .note-title-input {

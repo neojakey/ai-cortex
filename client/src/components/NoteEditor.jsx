@@ -13,7 +13,9 @@ import {
   Plus,
   HelpCircle,
   Eye,
-  Pencil
+  Pencil,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { renderNoteMarkdown, WIKILINK_PREFIX } from '../lib/renderMarkdown.js';
 
@@ -43,6 +45,7 @@ export default function NoteEditor({
   const [saveStatus, setSaveStatus] = useState('Saved');
   const [isUploading, setIsUploading] = useState(false);
   const [viewMode, setViewMode] = useState(() => viewModeStorage.get('ai_cortex_view_mode') || 'read');
+  const [fullWidth, setFullWidth] = useState(() => viewModeStorage.get('ai_cortex_full_width') === 'true');
 
   // Wikilink autocomplete state
   const [showWikilinks, setShowWikilinks] = useState(false);
@@ -222,6 +225,12 @@ ${backlinksText}
     viewModeStorage.set('ai_cortex_view_mode', mode);
   };
 
+  const toggleFullWidth = () => {
+    const next = !fullWidth;
+    setFullWidth(next);
+    viewModeStorage.set('ai_cortex_full_width', String(next));
+  };
+
   // Intercept clicks on rendered [[wikilinks]] to navigate within the app;
   // real links (attachments, external URLs) fall through to default <a> behavior.
   const handleRenderedClick = (e) => {
@@ -296,6 +305,17 @@ ${backlinksText}
             </button>
           </div>
 
+          {/* Full-width toggle */}
+          <button
+            type="button"
+            className={`btn-icon ${fullWidth ? 'active' : ''}`}
+            onClick={toggleFullWidth}
+            title={fullWidth ? 'Switch to readable column width' : 'Expand content to full width'}
+            aria-pressed={fullWidth}
+          >
+            {fullWidth ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          </button>
+
           {/* Copy Context for Claude / Gemini */}
           <button 
             className="btn-ai-context" 
@@ -334,7 +354,7 @@ ${backlinksText}
       </div>
 
       {/* Editor Content Area */}
-      <div className="editor-content-container">
+      <div className={`editor-content-container ${fullWidth ? 'is-full-width' : ''}`}>
         {/* Title Input */}
         <input
           type="text"
