@@ -23,6 +23,11 @@ const storage = {
   }
 };
 
+const MIN_SIDEBAR_WIDTH = 220;
+const MAX_SIDEBAR_WIDTH = 480;
+const DEFAULT_SIDEBAR_WIDTH = 290;
+const clampSidebarWidth = (w) => Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, w));
+
 export default function App() {
   const [notes, setNotes] = useState([]);
   const [activeNoteId, setActiveNoteId] = useState(null);
@@ -30,7 +35,50 @@ export default function App() {
   const [activeView, setActiveView] = useState('document'); // 'document', 'kanban', 'table', 'tasks', 'trash'
   const [tags, setTags] = useState([]);
   const [selectedTag, setSelectedTag] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [selectedProject, setSelectedProject] = useState(null);
   const [health, setHealth] = useState(null);
+
+  // Draggable sidebar width, persisted across sessions like the theme prefs.
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = parseInt(storage.get('ai_cortex_sidebar_width'), 10);
+    return Number.isFinite(saved) ? clampSidebarWidth(saved) : DEFAULT_SIDEBAR_WIDTH;
+  });
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+
+  const handleSidebarResizeStart = useCallback((e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+    let latestWidth = startWidth;
+    setIsResizingSidebar(true);
+
+    const handleMouseMove = (moveEvent) => {
+      latestWidth = clampSidebarWidth(startWidth + (moveEvent.clientX - startX));
+      setSidebarWidth(latestWidth);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      setIsResizingSidebar(false);
+      storage.set('ai_cortex_sidebar_width', String(latestWidth));
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [sidebarWidth]);
+
+  // Prevent text selection / show the resize cursor for the whole page while dragging.
+  useEffect(() => {
+    if (!isResizingSidebar) return;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingSidebar]);
 
   // Theme Mode: 'dark' | 'light' | 'system'
   const [themeMode, setThemeMode] = useState(() => storage.get('ai_cortex_theme_mode') || 'system');
@@ -86,22 +134,25 @@ export default function App() {
   // Fetch all active notes and tags
   const fetchData = useCallback(async () => {
     try {
-      const notesUrl = selectedTag
-        ? `/api/notes?status=active&tag=${encodeURIComponent(selectedTag)}`
-        : `/api/notes?status=active`;
+      const notesParams = new URLSearchParams({ status: 'active' });
+      if (selectedTag) notesParams.set('tag', selectedTag);
+      if (selectedProject) notesParams.set('project', selectedProject);
 
-      const [notesRes, tagsRes, healthRes] = await Promise.all([
-        fetch(notesUrl),
+      const [notesRes, tagsRes, projectsRes, healthRes] = await Promise.all([
+        fetch(`/api/notes?${notesParams.toString()}`),
         fetch('/api/tags'),
+        fetch('/api/projects'),
         fetch('/api/health')
       ]);
 
       const notesData = await notesRes.json();
       const tagsData = await tagsRes.json();
+      const projectsData = await projectsRes.json();
       const healthData = await healthRes.json();
 
       setNotes(notesData.notes || []);
       setTags(tagsData.tags || []);
+      setProjects(projectsData.projects || []);
       setHealth(healthData);
 
       // Default select first note if none selected
@@ -109,7 +160,7 @@ export default function App() {
     } catch (err) {
       console.error('Error fetching AI-Cortex data:', err);
     }
-  }, [selectedTag]);
+  }, [selectedTag, selectedProject]);
 
   useEffect(() => {
     fetchData();
@@ -273,7 +324,25 @@ export default function App() {
         tags={tags}
         selectedTag={selectedTag}
         onSelectTag={setSelectedTag}
+        projects={projects}
+        selectedProject={selectedProject}
+        onSelectProject={setSelectedProject}
         health={health}
+        width={sidebarWidth}
+      />
+
+      {/* Sidebar resize handle */}
+      <div
+        className={`sidebar-resize-handle ${isResizingSidebar ? 'active' : ''}`}
+        onMouseDown={handleSidebarResizeStart}
+        onDoubleClick={() => {
+          setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+          storage.set('ai_cortex_sidebar_width', String(DEFAULT_SIDEBAR_WIDTH));
+        }}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        title="Drag to resize · double-click to reset"
       />
 
       {/* Main View Router */}

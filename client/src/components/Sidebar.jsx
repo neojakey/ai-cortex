@@ -1,18 +1,86 @@
-import React from 'react';
-import { 
-  FileText, 
-  Calendar, 
-  CheckSquare, 
-  Kanban, 
-  Table, 
-  Plus, 
-  Search, 
-  Settings, 
-  Trash2, 
-  Tag, 
+import React, { useState } from 'react';
+import {
+  FileText,
+  Calendar,
+  CheckSquare,
+  Kanban,
+  Table,
+  Plus,
+  Search,
+  Settings,
+  Trash2,
+  Tag,
   Sparkles,
-  Cpu
+  Cpu,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
+
+// Collapsed-by-default filter accordion, shared by the Projects and Hashtags
+// sections — auto-expands whenever its own filter is the active one, so the
+// user always sees what's currently filtering the note list.
+function FilterSection({ title, items, activeKey, onSelect, prefix = '', getKey, getLabel, getCount }) {
+  const [manualOpen, setManualOpen] = useState(false);
+  if (!items || items.length === 0) return null;
+
+  const isOpen = manualOpen || !!activeKey;
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border-dim)' }}>
+      <button
+        type="button"
+        onClick={() => setManualOpen((o) => !o)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '8px 12px',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer'
+        }}
+      >
+        <span className="section-label" style={{ padding: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
+          {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          {title}
+          {activeKey && (
+            <span style={{ color: 'var(--accent-primary)', textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>
+              · {prefix}{activeKey}
+            </span>
+          )}
+        </span>
+        <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{items.length}</span>
+      </button>
+
+      {isOpen && (
+        <div style={{ padding: '0 12px 10px', maxHeight: 110, overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {items.map((item) => {
+            const key = getKey(item);
+            const active = activeKey === key;
+            return (
+              <button
+                key={key}
+                onClick={() => onSelect(active ? null : key)}
+                style={{
+                  background: active ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255, 255, 255, 0.05)',
+                  border: active ? '1px solid #6366f1' : '1px solid transparent',
+                  color: active ? '#ffffff' : 'var(--text-dim)',
+                  borderRadius: 4,
+                  fontSize: 11,
+                  padding: '2px 6px',
+                  cursor: 'pointer'
+                }}
+              >
+                {prefix}{getLabel(item)} <span style={{ opacity: 0.6 }}>({getCount(item)})</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Sidebar({
   notes,
@@ -27,10 +95,14 @@ export default function Sidebar({
   tags,
   selectedTag,
   onSelectTag,
-  health
+  projects,
+  selectedProject,
+  onSelectProject,
+  health,
+  width
 }) {
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={width ? { width, minWidth: width } : undefined}>
       {/* Brand Header */}
       <div className="sidebar-header">
         <div className="brand-badge">
@@ -115,12 +187,15 @@ export default function Sidebar({
       <div className="notes-list-section">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px 8px' }}>
           <span className="section-label" style={{ padding: 0 }}>
-            {selectedTag ? `#${selectedTag} (${notes.length})` : `All Notes (${notes.length})`}
+            {[
+              selectedProject && (projects.find((p) => p.slug === selectedProject)?.name || selectedProject),
+              selectedTag && `#${selectedTag}`
+            ].filter(Boolean).join(' · ') || 'All Notes'} ({notes.length})
           </span>
-          {selectedTag && (
-            <button 
+          {(selectedTag || selectedProject) && (
+            <button
               style={{ background: 'none', border: 'none', color: '#818cf8', fontSize: 11, cursor: 'pointer' }}
-              onClick={() => onSelectTag(null)}
+              onClick={() => { onSelectTag(null); onSelectProject(null); }}
             >
               Clear
             </button>
@@ -152,31 +227,28 @@ export default function Sidebar({
         ))}
       </div>
 
-      {/* Tags Cloud */}
-      {tags.length > 0 && (
-        <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border-dim)', maxHeight: 110, overflowY: 'auto' }}>
-          <div className="section-label" style={{ padding: '0 0 6px' }}>Hashtags</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {tags.map((t) => (
-              <button
-                key={t.name}
-                onClick={() => onSelectTag(selectedTag === t.name ? null : t.name)}
-                style={{
-                  background: selectedTag === t.name ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255, 255, 255, 0.05)',
-                  border: selectedTag === t.name ? '1px solid #6366f1' : '1px solid transparent',
-                  color: selectedTag === t.name ? '#ffffff' : 'var(--text-dim)',
-                  borderRadius: 4,
-                  fontSize: 11,
-                  padding: '2px 6px',
-                  cursor: 'pointer'
-                }}
-              >
-                #{t.name} <span style={{ opacity: 0.6 }}>({t.count})</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Projects (collapsed accordion) */}
+      <FilterSection
+        title="Projects"
+        items={projects}
+        activeKey={selectedProject}
+        onSelect={onSelectProject}
+        getKey={(p) => p.slug}
+        getLabel={(p) => p.name}
+        getCount={(p) => p.noteCount}
+      />
+
+      {/* Hashtags (collapsed accordion) */}
+      <FilterSection
+        title="Hashtags"
+        items={tags}
+        activeKey={selectedTag}
+        onSelect={onSelectTag}
+        prefix="#"
+        getKey={(t) => t.name}
+        getLabel={(t) => t.name}
+        getCount={(t) => t.count}
+      />
 
       {/* Sidebar Footer */}
       <div className="sidebar-footer">
