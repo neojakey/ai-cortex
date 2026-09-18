@@ -11,7 +11,6 @@ import {
   Trash2,
   Tag,
   Sparkles,
-  Cpu,
   ChevronDown,
   ChevronRight
 } from 'lucide-react';
@@ -106,9 +105,7 @@ export default function Sidebar({
       {/* Brand Header */}
       <div className="sidebar-header">
         <div className="brand-badge">
-          <div className="icon-box">
-            <Cpu size={18} color="#ffffff" />
-          </div>
+          <img src="/logo-192.png" alt="AI-Cortex" className="brand-logo-img" />
           <div className="brand-title">
             <span>AI-Cortex</span>
             <span className="brand-title-dot" />

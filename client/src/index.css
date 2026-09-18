@@ -237,19 +237,17 @@ button, input, textarea, select {
   gap: 11px;
 }
 
-.brand-badge .icon-box {
-  width: 34px;
-  height: 34px;
-  background: var(--accent-primary-gradient);
+.brand-badge .brand-logo-img {
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  object-fit: cover;
   box-shadow: 0 4px 14px var(--accent-glow);
-  transition: transform var(--transition-bounce);
+  transition: transform var(--transition-bounce), box-shadow var(--transition-smooth);
 }
-.brand-badge:hover .icon-box {
-  transform: scale(1.05) rotate(-3deg);
+.brand-badge:hover .brand-logo-img {
+  transform: scale(1.08) rotate(-2deg);
+  box-shadow: 0 6px 18px var(--accent-glow);
 }
 
 .brand-title {

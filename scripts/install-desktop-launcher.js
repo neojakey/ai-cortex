@@ -12,7 +12,7 @@ const nodeBinary = process.execPath || 'node';
 const serverScript = path.join(projectRoot, 'core/api/server.js');
 const envFile = path.join(projectRoot, '.env');
 const launcherScript = path.join(projectRoot, 'scripts/open-ai-cortex.sh');
-const iconPath = path.join(projectRoot, 'client/public/brain.svg');
+const iconPath = path.join(projectRoot, 'client/public/logo-512.png');
 
 function run(cmd, args) {
   return spawnSync(cmd, args, { stdio: 'inherit' });
