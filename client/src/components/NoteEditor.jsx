@@ -1,18 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Sparkles, 
-  Paperclip, 
-  Trash2, 
-  Calendar, 
-  Tag, 
-  ArrowLeftRight, 
-  Check, 
-  Clock, 
-  Download, 
+import {
+  Sparkles,
+  Paperclip,
+  Trash2,
+  Calendar,
+  Tag,
+  ArrowLeftRight,
+  Check,
+  Clock,
+  Download,
   ExternalLink,
   Plus,
-  HelpCircle
+  HelpCircle,
+  Eye,
+  Pencil
 } from 'lucide-react';
+import { renderNoteMarkdown, WIKILINK_PREFIX } from '../lib/renderMarkdown.js';
+
+// localStorage can throw (private mode, blocked site data); never let that break the app.
+const viewModeStorage = {
+  get(key) {
+    try { return localStorage.getItem(key); } catch { return null; }
+  },
+  set(key, value) {
+    try { localStorage.setItem(key, value); } catch { /* ignore */ }
+  }
+};
 
 export default function NoteEditor({
   note,
@@ -29,6 +42,7 @@ export default function NoteEditor({
   const [copiedContext, setCopiedContext] = useState(false);
   const [saveStatus, setSaveStatus] = useState('Saved');
   const [isUploading, setIsUploading] = useState(false);
+  const [viewMode, setViewMode] = useState(() => viewModeStorage.get('ai_cortex_view_mode') || 'read');
 
   // Wikilink autocomplete state
   const [showWikilinks, setShowWikilinks] = useState(false);
@@ -203,6 +217,25 @@ ${backlinksText}
     }
   };
 
+  const changeViewMode = (mode) => {
+    setViewMode(mode);
+    viewModeStorage.set('ai_cortex_view_mode', mode);
+  };
+
+  // Intercept clicks on rendered [[wikilinks]] to navigate within the app;
+  // real links (attachments, external URLs) fall through to default <a> behavior.
+  const handleRenderedClick = (e) => {
+    const anchor = e.target.closest('a[href]');
+    if (!anchor) return;
+    const href = anchor.getAttribute('href') || '';
+    if (!href.startsWith(WIKILINK_PREFIX)) return;
+
+    e.preventDefault();
+    const targetTitle = decodeURIComponent(href.slice(WIKILINK_PREFIX.length)).trim().toLowerCase();
+    const target = allNotes.find((n) => n.title.trim().toLowerCase() === targetTitle);
+    if (target) onSelectNote(target.id);
+  };
+
   const filteredWikilinks = allNotes
     .filter((n) => n.id !== note.id && n.title.toLowerCase().includes(wikilinkSearch))
     .slice(0, 6);
@@ -241,6 +274,28 @@ ${backlinksText}
         </div>
 
         <div className="editor-actions">
+          {/* Read / Edit mode toggle */}
+          <div className="view-mode-toggle">
+            <button
+              type="button"
+              className={`view-mode-btn ${viewMode === 'read' ? 'active' : ''}`}
+              onClick={() => changeViewMode('read')}
+              title="Read: rendered markdown"
+            >
+              <Eye size={13} />
+              <span>Read</span>
+            </button>
+            <button
+              type="button"
+              className={`view-mode-btn ${viewMode === 'edit' ? 'active' : ''}`}
+              onClick={() => changeViewMode('edit')}
+              title="Edit: raw markdown source"
+            >
+              <Pencil size={13} />
+              <span>Edit</span>
+            </button>
+          </div>
+
           {/* Copy Context for Claude / Gemini */}
           <button 
             className="btn-ai-context" 
@@ -326,69 +381,85 @@ ${backlinksText}
           )}
         </div>
 
-        {/* Editorial Quick-Format Ribbon */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 0 6px', borderBottom: '1px solid var(--border-dim)' }}>
-          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12, fontWeight: 700 }} onClick={() => insertMarkdown('**', '**')} title="Bold">
-            B
-          </button>
-          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12, fontStyle: 'italic' }} onClick={() => insertMarkdown('*', '*')} title="Italic">
-            I
-          </button>
-          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontWeight: 600 }} onClick={() => insertMarkdown('# ')} title="Heading 1">
-            H1
-          </button>
-          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontWeight: 600 }} onClick={() => insertMarkdown('## ')} title="Heading 2">
-            H2
-          </button>
-          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)' }} onClick={() => insertMarkdown('- [ ] ')} title="Checkbox Task">
-            [ ] Task
-          </button>
-          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => insertMarkdown('> ')} title="Callout Quote">
-            “ Quote
-          </button>
-          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)' }} onClick={() => insertMarkdown('`', '`')} title="Code">
-            &lt;/&gt;
-          </button>
-          <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, color: 'var(--accent-primary)', fontWeight: 600 }} onClick={() => insertMarkdown('[[', ']]')} title="Wikilink">
-            ⇄ [[Link]]
-          </button>
-        </div>
+        {viewMode === 'edit' ? (
+          <>
+            {/* Editorial Quick-Format Ribbon */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 0 6px', borderBottom: '1px solid var(--border-dim)' }}>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12, fontWeight: 700 }} onClick={() => insertMarkdown('**', '**')} title="Bold">
+                B
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12, fontStyle: 'italic' }} onClick={() => insertMarkdown('*', '*')} title="Italic">
+                I
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontWeight: 600 }} onClick={() => insertMarkdown('# ')} title="Heading 1">
+                H1
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontWeight: 600 }} onClick={() => insertMarkdown('## ')} title="Heading 2">
+                H2
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)' }} onClick={() => insertMarkdown('- [ ] ')} title="Checkbox Task">
+                [ ] Task
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => insertMarkdown('> ')} title="Callout Quote">
+                “ Quote
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)' }} onClick={() => insertMarkdown('`', '`')} title="Code">
+                &lt;/&gt;
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, color: 'var(--accent-primary)', fontWeight: 600 }} onClick={() => insertMarkdown('[[', ']]')} title="Wikilink">
+                ⇄ [[Link]]
+              </button>
+            </div>
 
-        {/* Note Textarea with Wikilink Autocomplete */}
-        <div style={{ position: 'relative' }}>
-          <textarea
-            ref={textareaRef}
-            className="note-textarea"
-            placeholder="Write your thoughts in Markdown... Type [[ to link notes, or #tags to categorize..."
-            value={content}
-            onChange={handleContentChange}
-          />
+            {/* Note Textarea with Wikilink Autocomplete */}
+            <div style={{ position: 'relative' }}>
+              <textarea
+                ref={textareaRef}
+                className="note-textarea mode-edit"
+                placeholder="Write your thoughts in Markdown... Type [[ to link notes, or #tags to categorize..."
+                value={content}
+                onChange={handleContentChange}
+              />
 
-          {/* Floating Wikilink Popup */}
-          {showWikilinks && (
-            <div className="wikilink-popup" style={{ top: 40, left: 20 }}>
-              <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-dim)' }}>
-                Link to existing note:
-              </div>
-              {filteredWikilinks.length > 0 ? (
-                filteredWikilinks.map((target) => (
-                  <div
-                    key={target.id}
-                    className="wikilink-item"
-                    onClick={() => insertWikilink(target.title)}
-                  >
-                    <span>⇄</span>
-                    <span>{target.title}</span>
+              {/* Floating Wikilink Popup */}
+              {showWikilinks && (
+                <div className="wikilink-popup" style={{ top: 40, left: 20 }}>
+                  <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-dim)' }}>
+                    Link to existing note:
                   </div>
-                ))
-              ) : (
-                <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)' }}>
-                  No matching notes found
+                  {filteredWikilinks.length > 0 ? (
+                    filteredWikilinks.map((target) => (
+                      <div
+                        key={target.id}
+                        className="wikilink-item"
+                        onClick={() => insertWikilink(target.title)}
+                      >
+                        <span>⇄</span>
+                        <span>{target.title}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)' }}>
+                      No matching notes found
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </>
+        ) : (
+          content.trim() ? (
+            <div
+              className="note-rendered"
+              onClick={handleRenderedClick}
+              dangerouslySetInnerHTML={{ __html: renderNoteMarkdown(content) }}
+            />
+          ) : (
+            <div className="note-rendered-empty">
+              Nothing here yet. Switch to Edit to start writing.
+            </div>
+          )
+        )}
 
         {/* Attachments Section */}
         {note.attachments && note.attachments.length > 0 && (
