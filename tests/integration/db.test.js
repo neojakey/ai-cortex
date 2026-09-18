@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { pool } from '../../core/db/pool.js';
 import { noteService } from '../../core/services/noteService.js';
 import { searchService } from '../../core/services/searchService.js';
+import { projectService } from '../../core/services/projectService.js';
 
 test('Integration: Note creation, backlinks traversal, tags & properties', async (t) => {
   // Create Target Note
@@ -57,6 +58,53 @@ test('Integration: Note creation, backlinks traversal, tags & properties', async
   // Clean up
   await noteService.deleteNote(sourceNote.id, { permanent: true });
   await noteService.deleteNote(targetNote.id, { permanent: true });
+});
+
+test('Integration: Projects table, notes.project_id, and project-scoped filtering', async (t) => {
+  // Schema sanity: projects table and notes.project_id exist after migration
+  const [projectTableRows] = await pool.query(
+    `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'`
+  );
+  assert.equal(projectTableRows.length, 1, 'projects table must exist');
+
+  const [projectColRows] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notes' AND COLUMN_NAME = 'project_id'`
+  );
+  assert.equal(projectColRows.length, 1, 'notes.project_id column must exist');
+
+  // Create notes in two different projects
+  const noteA = await noteService.createNote({
+    title: 'DB Test CarbonVerified Note',
+    content: 'Belongs to CarbonVerified.',
+    project: 'CarbonVerified'
+  });
+  const noteB = await noteService.createNote({
+    title: 'DB Test AI-Cortex Note',
+    content: 'Belongs to AI-Cortex.',
+    project: 'AI-Cortex'
+  });
+
+  assert.equal(noteA.project.name, 'CarbonVerified');
+  assert.equal(noteB.project.name, 'AI-Cortex');
+  assert.notEqual(noteA.project.id, noteB.project.id);
+
+  // getOrCreateByName resolves to the same project on a second call
+  const sameProject = await projectService.getOrCreateByName('CarbonVerified');
+  assert.equal(sameProject.id, noteA.project.id);
+
+  // listNotes scoped by project only returns the matching note
+  const carbonNotes = await noteService.listNotes({ project: noteA.project.slug });
+  assert.ok(carbonNotes.some((n) => n.id === noteA.id));
+  assert.ok(!carbonNotes.some((n) => n.id === noteB.id));
+
+  // search scoped by project only returns the matching note
+  const searchResults = await searchService.search('DB Test', { project: noteA.project.slug });
+  assert.ok(searchResults.some((r) => r.id === noteA.id));
+  assert.ok(!searchResults.some((r) => r.id === noteB.id));
+
+  // Clean up
+  await noteService.deleteNote(noteA.id, { permanent: true });
+  await noteService.deleteNote(noteB.id, { permanent: true });
 });
 
 test.after(async () => {

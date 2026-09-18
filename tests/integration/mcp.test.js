@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { noteService } from '../../core/services/noteService.js';
 import { searchService } from '../../core/services/searchService.js';
+import { projectService } from '../../core/services/projectService.js';
 import { pool } from '../../core/db/pool.js';
 
 test('MCP Tool Handlers: search, read_note, get_backlinks, create_note, list_tasks', async () => {
@@ -36,6 +37,39 @@ test('MCP Tool Handlers: search, read_note, get_backlinks, create_note, list_tas
 
   // Clean up
   await noteService.deleteNote(created.id, { permanent: true });
+});
+
+test('MCP Tool Handlers: create_note with project, list_projects, project-scoped search/list_recent', async () => {
+  // ai_cortex_create_note with a `project` — mirrors the mcp/index.js handler
+  const carbonNote = await noteService.createNote({
+    title: 'MCP CarbonVerified Compliance Note',
+    content: 'Client compliance status pulled via MCP.',
+    project: 'CarbonVerified'
+  });
+  const cortexNote = await noteService.createNote({
+    title: 'MCP AI-Cortex Roadmap Note',
+    content: 'Roadmap discussion for AI-Cortex itself.',
+    project: 'AI-Cortex'
+  });
+
+  // ai_cortex_list_projects
+  const projects = await projectService.listProjects();
+  assert.ok(projects.some((p) => p.slug === carbonNote.project.slug));
+  assert.ok(projects.some((p) => p.slug === cortexNote.project.slug));
+
+  // ai_cortex_search scoped to a project
+  const scopedSearch = await searchService.search('MCP', { project: carbonNote.project.slug });
+  assert.ok(scopedSearch.some((r) => r.id === carbonNote.id));
+  assert.ok(!scopedSearch.some((r) => r.id === cortexNote.id));
+
+  // ai_cortex_list_recent scoped to a project
+  const scopedRecent = await noteService.listNotes({ project: cortexNote.project.slug });
+  assert.ok(scopedRecent.some((n) => n.id === cortexNote.id));
+  assert.ok(!scopedRecent.some((n) => n.id === carbonNote.id));
+
+  // Clean up
+  await noteService.deleteNote(carbonNote.id, { permanent: true });
+  await noteService.deleteNote(cortexNote.id, { permanent: true });
 });
 
 test.after(async () => {

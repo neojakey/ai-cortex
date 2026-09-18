@@ -31,6 +31,37 @@ export async function runMigrations() {
     `);
 
     await conn.query(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id VARCHAR(36) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        slug VARCHAR(255) NOT NULL UNIQUE,
+        color VARCHAR(7) NULL,
+        created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
+        INDEX idx_project_slug (slug)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    const [projectColRows] = await conn.query(`
+      SELECT COLUMN_NAME FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notes' AND COLUMN_NAME = 'project_id'
+    `);
+    if (!projectColRows.length) {
+      await conn.query(`ALTER TABLE notes ADD COLUMN project_id VARCHAR(36) NULL;`);
+    }
+
+    const [fkRows] = await conn.query(`
+      SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notes' AND CONSTRAINT_NAME = 'fk_notes_project'
+    `);
+    if (!fkRows.length) {
+      await conn.query(`
+        ALTER TABLE notes
+        ADD CONSTRAINT fk_notes_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+        ADD INDEX idx_project_id (project_id);
+      `);
+    }
+
+    await conn.query(`
       CREATE TABLE IF NOT EXISTS note_links (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         source_note_id VARCHAR(36) NOT NULL,

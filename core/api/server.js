@@ -11,6 +11,7 @@ import { noteService } from '../services/noteService.js';
 import { searchService } from '../services/searchService.js';
 import { attachmentService } from '../services/attachmentService.js';
 import { exportService } from '../services/exportService.js';
+import { projectService } from '../services/projectService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -128,10 +129,11 @@ app.get('/api/health', async (req, res) => {
 // List notes
 app.get('/api/notes', async (req, res) => {
   try {
-    const { status = 'active', tag, search, limit = 100, offset = 0, sortBy, sortOrder } = req.query;
+    const { status = 'active', tag, project, search, limit = 100, offset = 0, sortBy, sortOrder } = req.query;
     const notes = await noteService.listNotes({
       status: status === 'all' ? null : status,
       tag,
+      project,
       search,
       limit: Number(limit),
       offset: Number(offset),
@@ -147,8 +149,8 @@ app.get('/api/notes', async (req, res) => {
 // Full-text search
 app.get('/api/search', async (req, res) => {
   try {
-    const { q, limit = 30 } = req.query;
-    const results = await searchService.search(q, { limit: Number(limit) });
+    const { q, project, limit = 30 } = req.query;
+    const results = await searchService.search(q, { project, limit: Number(limit) });
     res.json({ results, total: results.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -180,14 +182,15 @@ app.get('/api/notes/:id', async (req, res) => {
 // Create note
 app.post('/api/notes', async (req, res) => {
   try {
-    const { title, content, status, dueDate, properties, customTags } = req.body;
+    const { title, content, status, dueDate, properties, customTags, project } = req.body;
     const note = await noteService.createNote({
       title,
       content,
       status,
       dueDate,
       properties,
-      customTags
+      customTags,
+      project
     });
     res.status(201).json({ note });
   } catch (err) {
@@ -198,14 +201,15 @@ app.post('/api/notes', async (req, res) => {
 // Update note
 app.put('/api/notes/:id', async (req, res) => {
   try {
-    const { title, content, status, dueDate, properties, customTags } = req.body;
+    const { title, content, status, dueDate, properties, customTags, project } = req.body;
     const note = await noteService.updateNote(req.params.id, {
       title,
       content,
       status,
       dueDate,
       properties,
-      customTags
+      customTags,
+      project
     });
     res.json({ note });
   } catch (err) {
@@ -247,8 +251,17 @@ app.get('/api/notes/:id/versions', async (req, res) => {
 });
 
 /* =========================================================================
-   3. Tags & Tasks
+   3. Projects, Tags & Tasks
    ========================================================================= */
+app.get('/api/projects', async (req, res) => {
+  try {
+    const projects = await projectService.listProjects();
+    res.json({ projects });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/tags', async (req, res) => {
   try {
     const tags = await noteService.listTags();

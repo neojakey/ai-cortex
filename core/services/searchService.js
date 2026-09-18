@@ -7,7 +7,7 @@ export class SearchService {
    * @param {string} query
    * @param {Object} options
    */
-  async search(query, { status = 'active', limit = 30 } = {}) {
+  async search(query, { status = 'active', project = null, limit = 30 } = {}) {
     if (!query || typeof query !== 'string' || !query.trim()) {
       return [];
     }
@@ -18,6 +18,7 @@ export class SearchService {
     if (!booleanQuery) return [];
 
     const likePattern = `%${trimmed}%`;
+    const projectClause = project ? `AND n.project_id = (SELECT id FROM projects WHERE slug = ? OR id = ?)` : '';
 
     // High performance query: combines FULLTEXT relevance score with fallback LIKE match
     const sql = `
@@ -31,18 +32,16 @@ export class SearchService {
           OR n.title LIKE ?
           OR n.content LIKE ?
         )
+        ${projectClause}
       ORDER BY score DESC, n.updated_at DESC
       LIMIT ?
     `;
 
-    const [rows] = await pool.query(sql, [
-      booleanQuery,
-      status,
-      booleanQuery,
-      likePattern,
-      likePattern,
-      Number(limit)
-    ]);
+    const params = [booleanQuery, status, booleanQuery, likePattern, likePattern];
+    if (project) params.push(project, project);
+    params.push(Number(limit));
+
+    const [rows] = await pool.query(sql, params);
 
     // Batch load tags
     const noteIds = rows.map((r) => r.id);

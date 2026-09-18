@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { pool } from '../db/pool.js';
 import { slugify, extractWikilinks, extractHashtags, extractTasks, markdownToPlaintext, toBooleanFulltextQuery } from './parser.js';
+import { projectService } from './projectService.js';
 
 const PRUNE_ORPHAN_TAGS_SQL =
   `DELETE t FROM tags t LEFT JOIN note_tags nt ON nt.tag_id = t.id WHERE nt.tag_id IS NULL`;
@@ -22,7 +23,8 @@ export class NoteService {
     status = 'active',
     dueDate = null,
     properties = {},
-    customTags = []
+    customTags = [],
+    project = null
   }) {
     if (!title || typeof title !== 'string') {
       throw new Error('Note title is required');
@@ -40,6 +42,7 @@ export class NoteService {
       slug = `${baseSlug}-${counter++}`;
     }
 
+    const projectRecord = project ? await projectService.getOrCreateByName(project) : null;
     const contentText = markdownToPlaintext(content);
     const conn = await pool.getConnection();
 
@@ -48,9 +51,9 @@ export class NoteService {
 
       // 1. Insert note
       await conn.query(
-        `INSERT INTO notes (id, title, slug, content, content_text, status, due_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [id, title.trim(), slug, content, contentText, status, dueDate || null]
+        `INSERT INTO notes (id, title, slug, content, content_text, status, due_date, project_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, title.trim(), slug, content, contentText, status, dueDate || null, projectRecord ? projectRecord.id : null]
       );
 
       // 2. Process Tags (both extracted #tags and explicitly passed tags)
@@ -129,7 +132,8 @@ export class NoteService {
     status,
     dueDate,
     properties,
-    customTags
+    customTags,
+    project
   }) {
     const existing = await this.getNoteById(id);
     if (!existing) {
@@ -139,6 +143,10 @@ export class NoteService {
     if (title !== undefined && typeof title !== 'string') {
       throw new Error('Note title must be a string');
     }
+
+    const projectRecord = project !== undefined
+      ? (project ? await projectService.getOrCreateByName(project) : null)
+      : undefined;
 
     const conn = await pool.getConnection();
 
@@ -167,14 +175,17 @@ export class NoteService {
       const newContent = content !== undefined ? content : existing.content;
       const newStatus = status !== undefined ? status : existing.status;
       const newDueDate = dueDate !== undefined ? (dueDate || null) : existing.dueDate;
+      const newProjectId = projectRecord !== undefined
+        ? (projectRecord ? projectRecord.id : null)
+        : (existing.project ? existing.project.id : null);
       const contentText = markdownToPlaintext(newContent);
 
       // 1. Update note
       await conn.query(
         `UPDATE notes
-         SET title = ?, slug = ?, content = ?, content_text = ?, status = ?, due_date = ?, updated_at = NOW(3)
+         SET title = ?, slug = ?, content = ?, content_text = ?, status = ?, due_date = ?, project_id = ?, updated_at = NOW(3)
          WHERE id = ?`,
-        [newTitle, newSlug, newContent, contentText, newStatus, newDueDate, id]
+        [newTitle, newSlug, newContent, contentText, newStatus, newDueDate, newProjectId, id]
       );
 
       // 2. Snapshot if content or title changed
@@ -292,6 +303,18 @@ export class NoteService {
   async _formatNoteRecord(row) {
     const noteId = row.id;
 
+    // 0. Project
+    let project = null;
+    if (row.project_id) {
+      const [projectRows] = await pool.query(
+        `SELECT id, name, slug FROM projects WHERE id = ?`,
+        [row.project_id]
+      );
+      if (projectRows.length) {
+        project = { id: projectRows[0].id, name: projectRows[0].name, slug: projectRows[0].slug };
+      }
+    }
+
     // 1. Tags
     const [tagRows] = await pool.query(
       `SELECT t.name FROM tags t
@@ -360,6 +383,7 @@ export class NoteService {
       dueDate: row.due_date,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      project,
       tags,
       properties,
       outgoingLinks: outgoingRows.map((r) => ({
@@ -391,6 +415,7 @@ export class NoteService {
   async listNotes({
     status = 'active',
     tag = null,
+    project = null,
     search = null,
     limit = 100,
     offset = 0,
@@ -403,6 +428,11 @@ export class NoteService {
     if (status) {
       whereClauses.push(`n.status = ?`);
       params.push(status);
+    }
+
+    if (project) {
+      whereClauses.push(`n.project_id = (SELECT id FROM projects WHERE slug = ? OR id = ?)`);
+      params.push(project, project);
     }
 
     if (tag) {

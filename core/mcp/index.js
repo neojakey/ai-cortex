@@ -8,6 +8,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { noteService } from '../services/noteService.js';
 import { searchService } from '../services/searchService.js';
+import { projectService } from '../services/projectService.js';
 import { slugify } from '../services/parser.js';
 
 const server = new Server(
@@ -35,6 +36,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             query: {
               type: 'string',
               description: 'The search query or keywords to look for'
+            },
+            project: {
+              type: 'string',
+              description: 'Optional project name or slug to scope the search to (see ai_cortex_list_projects)'
             },
             limit: {
               type: 'number',
@@ -89,6 +94,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             properties: {
               type: 'object',
               description: 'Optional Notion-style key/value properties'
+            },
+            project: {
+              type: 'string',
+              description: 'Optional project name to associate this note with (e.g. "CarbonVerified"). Created automatically if it does not exist yet.'
             }
           },
           required: ['title', 'content']
@@ -111,6 +120,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             append: {
               type: 'boolean',
               description: 'If true, append content to existing content instead of overwriting'
+            },
+            project: {
+              type: 'string',
+              description: 'Optional project name to reassign this note to. Created automatically if it does not exist yet.'
             }
           },
           required: ['idOrTitle', 'content']
@@ -143,8 +156,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             tag: {
               type: 'string',
               description: 'Optional filter by hashtag'
+            },
+            project: {
+              type: 'string',
+              description: 'Optional project name or slug to scope the list to (see ai_cortex_list_projects)'
             }
           }
+        }
+      },
+      {
+        name: 'ai_cortex_list_projects',
+        description: 'List all projects in AI-Cortex, with how many active notes belong to each. Call this before filtering or creating notes by project to see what already exists.',
+        inputSchema: {
+          type: 'object',
+          properties: {}
         }
       },
       {
@@ -172,6 +197,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case 'ai_cortex_search': {
         const results = await searchService.search(args.query, {
+          project: args.project || null,
           limit: args.limit || 10
         });
         return {
@@ -209,7 +235,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           status: args.status || 'active',
           dueDate: args.dueDate || null,
           customTags: args.tags || [],
-          properties: args.properties || {}
+          properties: args.properties || {},
+          project: args.project || null
         });
         return {
           content: [
@@ -239,7 +266,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           newContent = `${note.content}\n\n${args.content}`;
         }
 
-        const updated = await noteService.updateNote(note.id, { content: newContent });
+        const updatePayload = { content: newContent };
+        if (args.project !== undefined) updatePayload.project = args.project;
+
+        const updated = await noteService.updateNote(note.id, updatePayload);
         return {
           content: [
             {
@@ -279,10 +309,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'ai_cortex_list_recent': {
         const notes = await noteService.listNotes({
           limit: args.limit || 15,
-          tag: args.tag || null
+          tag: args.tag || null,
+          project: args.project || null
         });
         return {
           content: [{ type: 'text', text: JSON.stringify(notes, null, 2) }]
+        };
+      }
+
+      case 'ai_cortex_list_projects': {
+        const projects = await projectService.listProjects();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(projects, null, 2) }]
         };
       }
 

@@ -76,6 +76,53 @@ test('API: Notes CRUD and search workflow', async () => {
   assert.equal(delRes.status, 200);
 });
 
+test('API: Projects list and project-scoped note filtering', async () => {
+  // 1. Create notes in two different projects
+  const noteAres = await fetch(`${baseUrl}/api/notes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: baseUrl },
+    body: JSON.stringify({
+      title: 'API Test CarbonVerified Note',
+      content: 'Belongs to CarbonVerified.',
+      project: 'CarbonVerified'
+    })
+  });
+  assert.equal(noteAres.status, 201);
+  const noteA = (await noteAres.json()).note;
+  assert.equal(noteA.project.name, 'CarbonVerified');
+
+  const noteBres = await fetch(`${baseUrl}/api/notes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: baseUrl },
+    body: JSON.stringify({
+      title: 'API Test AI-Cortex Note',
+      content: 'Belongs to AI-Cortex.',
+      project: 'AI-Cortex'
+    })
+  });
+  assert.equal(noteBres.status, 201);
+  const noteB = (await noteBres.json()).note;
+
+  // 2. Projects list includes the new project with a note count
+  const projectsRes = await fetch(`${baseUrl}/api/projects`);
+  assert.equal(projectsRes.status, 200);
+  const projectsData = await projectsRes.json();
+  const carbonProject = projectsData.projects.find((p) => p.slug === noteA.project.slug);
+  assert.ok(carbonProject);
+  assert.ok(carbonProject.noteCount >= 1);
+
+  // 3. Notes list scoped by project only returns the matching note
+  const scopedRes = await fetch(`${baseUrl}/api/notes?project=${encodeURIComponent(noteA.project.slug)}`);
+  assert.equal(scopedRes.status, 200);
+  const scopedData = await scopedRes.json();
+  assert.ok(scopedData.notes.some((n) => n.id === noteA.id));
+  assert.ok(!scopedData.notes.some((n) => n.id === noteB.id));
+
+  // Clean up
+  await fetch(`${baseUrl}/api/notes/${noteA.id}?permanent=true`, { method: 'DELETE', headers: { Origin: baseUrl } });
+  await fetch(`${baseUrl}/api/notes/${noteB.id}?permanent=true`, { method: 'DELETE', headers: { Origin: baseUrl } });
+});
+
 test('API: Settings MCP Config returns OS-specific paths', async () => {
   const res = await fetch(`${baseUrl}/api/settings/mcp-config`);
   assert.equal(res.status, 200);
