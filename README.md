@@ -83,7 +83,34 @@ Open **http://127.0.0.1:3001**. The API binds to `HOST` (default `127.0.0.1`); s
 1. Open AI-Cortex in your browser.
 2. Click **Settings** in the bottom-left sidebar, then open the **AI Integrations** tab.
 3. Click the **"1-Click Auto Install"** button (or copy the pre-filled JSON snippet into your `claude_desktop_config.json`). A **"1-Click Enable for Gemini"** button does the same for `.agents/mcp_config.json` in this workspace.
-4. Restart Claude Desktop. You will now see the memory tools (`ai_cortex_search`, `ai_cortex_read_note`, `ai_cortex_create_note`, `ai_cortex_update_note`, `ai_cortex_get_backlinks`, `ai_cortex_list_recent`, `ai_cortex_list_tasks`) available directly in Claude using your **existing Claude Pro subscription**!
+4. Restart Claude Desktop. You will now see the memory tools (`ai_cortex_search`, `ai_cortex_read_note`, `ai_cortex_create_note`, `ai_cortex_update_note`, `ai_cortex_get_backlinks`, `ai_cortex_list_recent`, `ai_cortex_list_projects`, `ai_cortex_list_tasks`) available directly in Claude using your **existing Claude Pro subscription**!
+
+## 🖥️ Connecting Claude Code
+
+Run:
+
+```bash
+npm run setup:claude-code
+```
+
+This does two things, and is safe to re-run on the same machine (both steps are idempotent):
+
+1. Registers AI-Cortex as a **user-scoped** MCP server (`claude mcp add --scope user`), so its tools are available in *every* Claude Code project on this machine, not just this repo. Start a new Claude Code session afterward to pick it up.
+2. Appends a short note-taking policy to your global `~/.claude/CLAUDE.md` (sourced from [`docs/claude-code-note-policy.md`](docs/claude-code-note-policy.md)), telling Claude Code to use AI-Cortex's MCP tools as the canonical place to save notes/memory instead of writing standalone files to disk.
+
+If the `claude` CLI isn't installed yet, the script prints the exact `claude mcp add` command to run manually once it is.
+
+## 🖱️ Desktop Launcher (Linux)
+
+Run:
+
+```bash
+npm run setup:desktop
+```
+
+This installs a `systemd --user` service that runs the AI-Cortex server in the background, starting automatically at login (same as your database), plus a desktop icon (`~/Desktop/ai-cortex.desktop`, also added to your app launcher) that just opens the app in your browser — no terminal needed day-to-day. If the server isn't running yet for any reason, the icon starts it first.
+
+Requires `systemd` and a `.env` already set up (see [Environment Setup](#2-environment-setup)). On GNOME, the script also marks the desktop icon as trusted so it's launchable immediately, no right-click prompt.
 
 ---
 
