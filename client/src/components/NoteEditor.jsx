@@ -48,6 +48,26 @@ const viewModeStorage = {
   }
 };
 
+function AttachmentThumb({ att }) {
+  const [failed, setFailed] = useState(false);
+  const isImage = (att.mimeType || '').startsWith('image/');
+  const isPdf = att.mimeType === 'application/pdf';
+  const src = isImage ? att.url : isPdf ? `/api/attachments/${att.id}/thumb` : null;
+  return (
+    <a className="attachment-card" href={att.url} target="_blank" rel="noreferrer" title={att.filename}>
+      <div className="attachment-thumb">
+        {src && !failed ? (
+          <img src={src} alt={att.filename} loading="lazy" onError={() => setFailed(true)} />
+        ) : (
+          <Paperclip size={28} />
+        )}
+      </div>
+      <div className="attachment-name">{att.filename}</div>
+      <div className="attachment-meta">{Math.round(att.fileSize / 1024)} KB</div>
+    </a>
+  );
+}
+
 export default function NoteEditor({
   note,
   allNotes,
@@ -92,6 +112,7 @@ export default function NoteEditor({
   }
   const [isUploading, setIsUploading] = useState(false);
   const [viewMode, setViewMode] = useState(() => viewModeStorage.get('ai_cortex_view_mode') || 'read');
+  const [thumbSize, setThumbSize] = useState(() => viewModeStorage.get('ai_cortex_thumb_size') || 'medium');
   const [fullWidth, setFullWidth] = useState(() => viewModeStorage.get('ai_cortex_full_width') === 'true');
 
   // Wikilink autocomplete state
@@ -269,40 +290,48 @@ ${backlinksText}
     onUpdateNote(note.id, { content: newContent });
   };
 
-  // Handle Attachment Upload
-  const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // Upload one or more files in order, then add all their links to the note in one save.
+  const uploadFiles = async (files) => {
+    if (!files.length) return;
     setIsUploading(true);
+    let links = '';
+    const failed = [];
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('noteId', note.id);
-
-      const res = await fetch('/api/attachments', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
-
-      // Append image or file link to markdown
-      const isImg = file.type.startsWith('image/');
-      const linkMarkdown = isImg
-        ? `\n\n![${data.attachment.filename}](${data.attachment.url})\n`
-        : `\n\n[📎 ${data.attachment.filename}](${data.attachment.url})\n`;
-
-      const updatedContent = content + linkMarkdown;
-      setContent(updatedContent);
-      await onUpdateNote(note.id, { content: updatedContent });
-    } catch (err) {
-      alert(`Attachment error: ${err.message}`);
+      for (const file of files) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('noteId', note.id);
+          const res = await fetch('/api/attachments', { method: 'POST', body: formData });
+          if (!res.ok) throw new Error('Upload failed');
+          const { attachment } = await res.json();
+          links += file.type.startsWith('image/')
+            ? `\n\n![${attachment.filename}](${attachment.url})\n`
+            : `\n\n[📎 ${attachment.filename}](${attachment.url})\n`;
+        } catch {
+          failed.push(file.name);
+        }
+      }
+      if (links) {
+        const updatedContent = content + links;
+        setContent(updatedContent);
+        await onUpdateNote(note.id, { content: updatedContent });
+      }
+      if (failed.length) alert(`Could not attach: ${failed.join(', ')}`);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const handleFileUpload = (e) => uploadFiles(Array.from(e.target.files || []));
+
+  const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+  const handleDragOver = (e) => { if (hasFiles(e)) e.preventDefault(); };
+  const handleDrop = (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (!isUploading) uploadFiles(Array.from(e.dataTransfer.files));
   };
 
   const changeViewMode = (mode) => {
@@ -462,6 +491,7 @@ ${backlinksText}
           {/* Attachment button */}
           <input 
             type="file" 
+            multiple
             ref={fileInputRef} 
             style={{ display: 'none' }} 
             onChange={handleFileUpload} 
@@ -511,7 +541,7 @@ ${backlinksText}
       )}
 
       {/* Editor Content Area */}
-      <div className={`editor-content-container ${fullWidth ? 'is-full-width' : ''}`}>
+      <div onDragOver={handleDragOver} onDrop={handleDrop} className={`editor-content-container ${fullWidth ? 'is-full-width' : ''}`}>
         {/* Title Input */}
         <input
           type="text"
@@ -641,34 +671,24 @@ ${backlinksText}
         {/* Attachments Section */}
         {note.attachments && note.attachments.length > 0 && (
           <div style={{ padding: '14px 0', borderTop: '1px solid var(--border-dim)' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10 }}>
-              Attachments ({note.attachments.length})
+            <div className="attachments-header">
+              <span>Attachments ({note.attachments.length})</span>
+              <div className="view-mode-toggle" role="group" aria-label="Thumbnail size">
+                {['small', 'medium', 'large'].map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    className={`view-mode-btn ${thumbSize === size ? 'active' : ''}`}
+                    onClick={() => { setThumbSize(size); viewModeStorage.set('ai_cortex_thumb_size', size); }}
+                  >
+                    {size[0].toUpperCase() + size.slice(1)}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <div className={`attachment-grid size-${thumbSize}`}>
               {note.attachments.map((att) => (
-                <a
-                  key={att.id}
-                  href={att.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '6px 12px',
-                    background: 'var(--bg-surface)',
-                    border: '1px solid var(--border-dim)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--text-dim)',
-                    textDecoration: 'none',
-                    fontSize: 12.5
-                  }}
-                >
-                  <Paperclip size={13} />
-                  <span>{att.filename}</span>
-                  <span style={{ opacity: 0.6, fontSize: 11 }}>({Math.round(att.fileSize / 1024)} KB)</span>
-                  <ExternalLink size={12} style={{ marginLeft: 4 }} />
-                </a>
+                <AttachmentThumb key={att.id} att={att} />
               ))}
             </div>
           </div>

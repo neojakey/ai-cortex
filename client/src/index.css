@@ -591,7 +591,7 @@ button, input, textarea, select {
 }
 .btn-ai-context:hover {
   background: var(--accent-primary);
-  color: #ffffff;
+  color: var(--accent-contrast, #ffffff);
   box-shadow: 0 4px 12px var(--accent-glow);
 }
 
@@ -809,7 +809,7 @@ button, input, textarea, select {
 }
 .view-mode-btn.active {
   background: var(--accent-primary);
-  color: #ffffff;
+  color: var(--accent-contrast, #ffffff);
 }
 
 .editor-content-container {
@@ -922,6 +922,35 @@ button, input, textarea, select {
 .note-rendered h2 { font-size: 22px; }
 .note-rendered h3 { font-size: 18px; }
 .note-rendered p { margin: 0 0 16px; }
+.note-rendered table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+}
+.note-rendered th, .note-rendered td {
+  padding: 9px 14px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-dim);
+  min-width: 90px;
+}
+.note-rendered th {
+  font-family: var(--font-display);
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-main);
+  background: var(--bg-surface-elevated);
+}
+.note-rendered tr:last-child td { border-bottom: none; }
+.note-rendered tbody tr:nth-child(even) td { background: var(--bg-surface); }
+.note-rendered tbody tr:hover td { background: var(--bg-surface-hover); }
 .note-rendered strong { font-weight: 700; color: var(--text-main); }
 .note-rendered em { font-style: italic; }
 .note-rendered ul, .note-rendered ol {
@@ -1205,5 +1234,69 @@ button, input, textarea, select {
 }
 .wikilink-item:hover {
   background: var(--accent-primary);
-  color: #ffffff;
+  color: var(--accent-contrast, #ffffff);
+}
+
+/* Attachment thumbnails */
+.attachments-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.attachment-grid {
+  --thumb: 200px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--thumb), 1fr));
+  gap: 14px;
+}
+.attachment-grid.size-small { --thumb: 110px; }
+.attachment-grid.size-medium { --thumb: 200px; }
+.attachment-grid.size-large { --thumb: 340px; }
+.attachment-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  min-width: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 12px;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.attachment-card:hover {
+  border-color: var(--border-focus);
+  background: var(--bg-surface-hover);
+}
+.attachment-thumb {
+  aspect-ratio: 3 / 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--bg-app);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+.attachment-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-meta {
+  font-size: 11px;
+  color: var(--text-muted);
 }

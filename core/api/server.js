@@ -5,6 +5,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import dotenv from 'dotenv';
 import { pool, checkConnection } from '../db/pool.js';
 import { noteService } from '../services/noteService.js';
@@ -13,6 +15,7 @@ import { attachmentService } from '../services/attachmentService.js';
 import { exportService } from '../services/exportService.js';
 import { projectService } from '../services/projectService.js';
 
+const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -393,6 +396,31 @@ app.get('/api/attachments/:id/file', async (req, res) => {
     }
   } catch (err) {
     res.status(500).send(err.message);
+  }
+});
+
+// First-page PNG preview of a PDF attachment, rendered once with pdftoppm and cached on disk.
+// 404 when the file is not a PDF or poppler is unavailable; the client then shows an icon.
+app.get('/api/attachments/:id/thumb', async (req, res) => {
+  try {
+    const attachment = await attachmentService.getAttachmentById(req.params.id);
+    if (!attachment) return res.status(404).send('Attachment not found');
+    if (attachment.mimeType !== 'application/pdf') return res.status(404).send('No preview');
+
+    const source = attachmentService.resolveDiskPath(attachment.storagePath);
+    if (!fs.existsSync(source)) return res.status(404).send('File missing on disk');
+
+    const cacheDir = path.resolve(attachmentService.storageDir, '..', 'thumbs');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const base = path.join(cacheDir, `${attachment.sha256}`);
+    const png = `${base}.png`;
+    if (!fs.existsSync(png)) {
+      await execFileAsync('pdftoppm', ['-png', '-f', '1', '-l', '1', '-singlefile', '-scale-to-x', '480', '-scale-to-y', '-1', source, base], { timeout: 20000 });
+    }
+    res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000, immutable' });
+    fs.createReadStream(png).pipe(res);
+  } catch {
+    res.status(404).send('No preview');
   }
 });
 
