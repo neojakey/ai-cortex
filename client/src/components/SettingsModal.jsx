@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { THUMB_SIZES, getDefaultThumbSize, setDefaultThumbSize } from '../lib/prefs.js';
 import { 
   X, 
   Cpu, 
@@ -34,6 +35,7 @@ export default function SettingsModal({
   onSelectScheme,
   onSelectCustomColor
 }) {
+  const [thumbDefault, setThumbDefault] = useState(getDefaultThumbSize);
   const [activeTab, setActiveTab] = useState('theme'); // 'theme', 'ai', 'db', 'vault'
   const [mcpConfig, setMcpConfig] = useState(null);
   const [copiedClaude, setCopiedClaude] = useState(false);
@@ -285,6 +287,27 @@ export default function SettingsModal({
                   Choose your base ambiance (Obsidian Deep Carbon or Warm Alabaster Archival Paper)
                   and select from 15 curated color palettes or use the eyedropper for custom branding.
                 </p>
+              </div>
+
+              <div>
+                <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)', marginBottom: 6 }}>
+                  Attachment thumbnails
+                </h4>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 10 }}>
+                  The size used when you open a note. You can still switch size on any note; that only lasts until you open another.
+                </p>
+                <div className="view-mode-toggle" role="group" aria-label="Default thumbnail size" style={{ display: 'inline-flex' }}>
+                  {THUMB_SIZES.map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      className={`view-mode-btn ${thumbDefault === size ? 'active' : ''}`}
+                      onClick={() => { setThumbDefault(size); setDefaultThumbSize(size); }}
+                    >
+                      {size[0].toUpperCase() + size.slice(1)}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Mode Toggle Banner */}

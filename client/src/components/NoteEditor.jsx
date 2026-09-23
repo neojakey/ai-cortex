@@ -22,6 +22,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { renderNoteMarkdown, WIKILINK_PREFIX } from '../lib/renderMarkdown.js';
+import { getDefaultThumbSize } from '../lib/prefs.js';
 import { createSaveCoordinator } from '../lib/saveCoordinator.js';
 
 // The fields the editor saves, in one comparable shape (used to detect "nothing to save").
@@ -112,7 +113,7 @@ export default function NoteEditor({
   }
   const [isUploading, setIsUploading] = useState(false);
   const [viewMode, setViewMode] = useState(() => viewModeStorage.get('ai_cortex_view_mode') || 'read');
-  const [thumbSize, setThumbSize] = useState(() => viewModeStorage.get('ai_cortex_thumb_size') || 'medium');
+  const [thumbSize, setThumbSize] = useState(getDefaultThumbSize);
   const [fullWidth, setFullWidth] = useState(() => viewModeStorage.get('ai_cortex_full_width') === 'true');
 
   // Wikilink autocomplete state
@@ -133,6 +134,7 @@ export default function NoteEditor({
     setLastSavedAt(null);
     setRefreshState('idle');
     setShowWikilinks(false);
+    setThumbSize(getDefaultThumbSize());
   }, [note?.id]);
 
   const isDirty = !!note && (
@@ -679,7 +681,7 @@ ${backlinksText}
                     key={size}
                     type="button"
                     className={`view-mode-btn ${thumbSize === size ? 'active' : ''}`}
-                    onClick={() => { setThumbSize(size); viewModeStorage.set('ai_cortex_thumb_size', size); }}
+                    onClick={() => setThumbSize(size)}
                   >
                     {size[0].toUpperCase() + size.slice(1)}
                   </button>
