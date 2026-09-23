@@ -19,11 +19,15 @@ Designed to connect natively to **Claude Desktop (Claude Pro)** and **Gemini** v
   - "Linked Mentions" panel at the bottom of every note displaying all notes that reference it.
 - 📋 **Notion-Style Database Views**:
   - **Database Grid**: Sortable, filterable table view with editable statuses.
-  - **Global Action Items**: Automatically extracts and aggregates `- [ ]` tasks from every note into a consolidated checklist.
+  - **Global Action Items**: Automatically extracts and aggregates `- [ ]` tasks from every note into a consolidated checklist. Ticking one edits its source note safely: the task is matched by its text, not just its line number, so an edit above it can't tick the wrong one.
+- ✍️ **Read / Edit Editor**: Notes open in a rendered **Read** view (sanitized Markdown, clickable `[[wikilinks]]`, read-only task checkboxes) and switch to raw Markdown in **Edit** mode. Autosave shows a clear status (saved / unsaved / saving / failed), **Save** (`Ctrl/Cmd + S`) writes immediately, and **Refresh** pulls in changes an AI made over MCP. An optional full-width layout is one click away.
+- 🗂️ **Projects**: Scope notes by project (for example one per product) so search and lists don't blend together. Filter from the sidebar; every MCP tool that creates, updates, searches or lists notes accepts an optional `project`.
+- 🛡️ **Safe Concurrent Writes**: People and AI agents write to the same notes, so every note carries a `revision`. An update that says which revision it read is refused if the note has changed since, instead of silently overwriting it. See **Safe Writes for Agents** below.
+- 🕘 **Version History**: Every title or content change is snapshotted (`GET /api/notes/:id/versions`). `POST /api/notes/:id/versions/:versionId/restore` re-applies a version as a normal edit, so the restore itself can be undone. (API only for now; there is no version UI yet.)
 - 📅 **Daily Journaling**: Jump to or create today's daily note with one keystroke (`Alt + D`).
 - 🎨 **Adaptive Theming**: 3-way **Dark / Light / System** ambiance (follows the OS and reacts live to changes), 15 curated accent palettes plus a custom-colour picker. Preferences persist in `localStorage`; the theme is applied before first paint to avoid any flash. Toggle modes with `Alt + T` or from **Settings → Appearance**.
-- 📦 **Obsidian Vault 1-Click Export & Import**: Export all notes and attachments as a standard `.zip` vault, or import existing Markdown vaults.
-- 🧪 **Complete Test Suite**: 11 automated unit and integration tests passing in ~300ms (`npm test`).
+- 📦 **Obsidian Vault 1-Click Export & Import**: Export all notes and attachments as a standard `.zip` vault, or import existing Markdown vaults. Imports are all-or-nothing for notes, keep the `id` in each note's frontmatter, and are safe to repeat: notes and attachments that already exist are skipped, never overwritten or duplicated.
+- 🧪 **Complete Test Suite**: 37 automated unit and integration tests (about 3 seconds, `npm test`). Integration tests run against a separate database and a temp attachment folder, so they can never touch your real notes.
 
 ---
 
@@ -59,6 +63,7 @@ npm run seed
 ```bash
 npm test
 ```
+Tests use their own `ai_cortex_test` database on the same MySQL server, plus a temp folder for attachments. A `pretest` step creates and migrates it automatically (your DB user needs permission to create databases). The test helper refuses to run against any database whose name doesn't end in `_test`, whatever your `.env` says, so your real notes are never touched. Set `TEST_DB_NAME` to use a different test database.
 
 ### 5. Start AI-Cortex
 
@@ -73,7 +78,9 @@ Open **http://127.0.0.1:5173** — the client proxies `/api` to the backend on p
 npm run build   # bundles the client into ./dist
 npm start
 ```
-Open **http://127.0.0.1:3001**. The API binds to `HOST` (default `127.0.0.1`); set `HOST` / `ALLOWED_HOSTS` to expose it on a LAN.
+Open **http://127.0.0.1:3001**. The API binds to `HOST` (default `127.0.0.1`).
+
+> **AI-Cortex has no authentication and is built for local use. Don't expose it to a network.** `HOST` / `ALLOWED_HOSTS` only relax the Host-header check; writes from browsers on non-loopback origins are still rejected.
 
 ---
 
@@ -83,6 +90,32 @@ Open **http://127.0.0.1:3001**. The API binds to `HOST` (default `127.0.0.1`); s
 2. Click **Settings** in the bottom-left sidebar, then open the **AI Integrations** tab.
 3. Click the **"1-Click Auto Install"** button (or copy the pre-filled JSON snippet into your `claude_desktop_config.json`). A **"1-Click Enable for Gemini"** button does the same for `.agents/mcp_config.json` in this workspace.
 4. Restart Claude Desktop. You will now see the memory tools (`ai_cortex_search`, `ai_cortex_read_note`, `ai_cortex_create_note`, `ai_cortex_update_note`, `ai_cortex_get_backlinks`, `ai_cortex_list_recent`, `ai_cortex_list_projects`, `ai_cortex_list_tasks`) available directly in Claude using your **existing Claude Pro subscription**!
+
+## 🛡️ Safe Writes for Agents
+
+Notes are edited by you and by AI agents at the same time, so every note has a `revision` number that goes up on every change. To avoid overwriting someone else's edit:
+
+1. **Read** the note (`ai_cortex_read_note`, or `GET /api/notes/:id`). The result includes `revision`.
+2. **Pass it back** as `expectedRevision` when you update (`ai_cortex_update_note`, or `PUT /api/notes/:id`).
+3. If the note has changed since you read it, **nothing is written** and you get a conflict. Re-read the note, merge your change into the latest content, and retry with the new revision.
+
+An MCP conflict comes back as an error result:
+
+```json
+{
+  "error": "REVISION_CONFLICT",
+  "message": "This note changed since you read it (it is now at revision 12). Re-read the note, merge your change into the latest content, and retry with the new revision as expectedRevision.",
+  "currentRevision": 12
+}
+```
+
+Over REST the same conflict is HTTP `409` with `{ "error": "<readable message>", "code": "REVISION_CONFLICT", "currentRevision": 12 }`.
+
+Good to know:
+
+- Leaving `expectedRevision` out still works, so existing clients keep working, but MCP replies include a warning and the server logs it. Always pass it.
+- `append: true` on `ai_cortex_update_note` is applied atomically on the server, so several agents appending at once never lose each other's text.
+- A save that changes nothing doesn't bump the revision. Trashing and restoring a note do.
 
 ## 🖥️ Connecting Claude Code
 
@@ -120,6 +153,7 @@ Requires `systemd` and a `.env` already set up (see [Environment Setup](#2-envir
 | `Ctrl + K` / `Cmd + K` | Open instant full-text search palette |
 | `Alt + D` | Jump to today's Daily Journal note |
 | `Ctrl + N` / `Cmd + N` | Create a new note |
+| `Ctrl + S` / `Cmd + S` | Save the current note now |
 | `Ctrl + Shift + C` | Copy AI Context Bundle for Claude.ai / Gemini web tabs |
 | `Alt + T` | Cycle theme: Dark → Light → System |
 | `[[` | Open wikilink auto-complete popup while writing |
