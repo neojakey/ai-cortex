@@ -1,0 +1,6 @@
+{
+  "nodejs-testing.env": {
+    "DB_NAME": "ai_cortex_test",
+    "STORAGE_DIR": "/tmp/ai-cortex-test-storage"
+  }
+}
