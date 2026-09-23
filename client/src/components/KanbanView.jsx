@@ -9,8 +9,7 @@ export default function KanbanView({
 }) {
   // Columns based on status
   const columns = [
-    { id: 'inbox', title: 'Inbox / Drafts', filter: (n) => n.status === 'draft' || !n.status },
-    { id: 'active', title: 'Active Projects', filter: (n) => n.status === 'active' },
+    { id: 'active', title: 'Active Projects', filter: (n) => n.status === 'active' || !n.status },
     { id: 'archived', title: 'Archived / Reference', filter: (n) => n.status === 'archived' }
   ];
 
@@ -76,7 +75,6 @@ export default function KanbanView({
                         onChange={(e) => handleStatusChange(e, note.id, e.target.value)}
                         style={{ fontSize: 11, padding: '2px 4px' }}
                       >
-                        <option value="draft">Draft</option>
                         <option value="active">Active</option>
                         <option value="archived">Archived</option>
                       </select>

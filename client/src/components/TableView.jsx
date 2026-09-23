@@ -95,7 +95,6 @@ export default function TableView({
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => onUpdateNote(n.id, { status: e.target.value })}
                 >
-                  <option value="draft">Draft</option>
                   <option value="active">Active</option>
                   <option value="archived">Archived</option>
                 </select>
