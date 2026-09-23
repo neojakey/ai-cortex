@@ -699,6 +699,70 @@ button, input, textarea, select {
   color: var(--accent-rose);
   background: color-mix(in srgb, var(--accent-rose) 12%, transparent);
 }
+.save-status-conflict {
+  color: var(--accent-amber);
+  background: color-mix(in srgb, var(--accent-amber) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-amber) 45%, transparent);
+}
+
+.conflict-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0 0 4px;
+  padding: 12px 20px;
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--accent-amber) 12%, var(--bg-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-amber) 45%, transparent);
+  font-size: 13px;
+}
+.conflict-banner > svg {
+  flex-shrink: 0;
+  color: var(--accent-amber);
+}
+.conflict-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.conflict-banner-text span {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+.conflict-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn-conflict {
+  height: 32px;
+  padding: 0 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.btn-conflict:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+.btn-conflict-danger {
+  border-color: color-mix(in srgb, var(--accent-rose) 55%, transparent);
+  color: var(--accent-rose);
+}
+.btn-conflict-danger:hover {
+  border-color: var(--accent-rose);
+  color: var(--accent-rose);
+  background: color-mix(in srgb, var(--accent-rose) 10%, var(--bg-surface));
+}
+
 .save-status-dot {
   width: 6px;
   height: 6px;

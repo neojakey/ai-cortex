@@ -22,6 +22,21 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { renderNoteMarkdown, WIKILINK_PREFIX } from '../lib/renderMarkdown.js';
+import { createSaveCoordinator } from '../lib/saveCoordinator.js';
+
+// The fields the editor saves, in one comparable shape (used to detect "nothing to save").
+function editorFields({ note, title, content, status, dueDate }) {
+  return { noteId: note ? note.id : null, title, content, status, dueDate: dueDate || null };
+}
+function noteFields(n) {
+  return {
+    noteId: n.id,
+    title: n.title || '',
+    content: n.content || '',
+    status: n.status || 'active',
+    dueDate: n.dueDate ? n.dueDate.slice(0, 10) : null
+  };
+}
 
 // localStorage can throw (private mode, blocked site data); never let that break the app.
 const viewModeStorage = {
@@ -47,15 +62,34 @@ export default function NoteEditor({
   const [status, setStatus] = useState(note?.status || 'active');
   const [dueDate, setDueDate] = useState(note?.dueDate ? note.dueDate.slice(0, 10) : '');
   const [copiedContext, setCopiedContext] = useState(false);
-  // 'saved' | 'unsaved' (edited, debounce pending) | 'saving' (request in flight) | 'error'
-  const [saveStatus, setSaveStatus] = useState('saved');
+  // Coordinator state: { status: 'idle' | 'saving' | 'error' | 'conflict', conflict }.
+  // The displayed `saveStatus` (below) adds 'saved' / 'unsaved' on top of it.
+  const [saveState, setSaveState] = useState({ status: 'idle', conflict: null });
   const [lastSavedAt, setLastSavedAt] = useState(null);
+  const [copiedMine, setCopiedMine] = useState(false);
   // 'idle' | 'loading' | 'updated' (server had newer content) | 'current' (already up to date) | 'error'
   const [refreshState, setRefreshState] = useState('idle');
   const refreshTimerRef = useRef(null);
   const saveTimerRef = useRef(null);
   const latestRef = useRef({});
   latestRef.current = { note, title, content, status, dueDate };
+  const onUpdateNoteRef = useRef(onUpdateNote);
+  onUpdateNoteRef.current = onUpdateNote;
+
+  // Serializes saves and sends the note's revision with each one, so an edit made
+  // elsewhere (e.g. by an AI over MCP) is reported as a conflict, never overwritten.
+  const saveRef = useRef(null);
+  if (!saveRef.current) {
+    saveRef.current = createSaveCoordinator({
+      getFields: () => editorFields(latestRef.current),
+      send: (fields, expectedRevision) => {
+        const { noteId, ...payload } = fields;
+        return onUpdateNoteRef.current(noteId, { ...payload, expectedRevision });
+      },
+      onChange: setSaveState,
+      onSaved: () => setLastSavedAt(new Date())
+    });
+  }
   const [isUploading, setIsUploading] = useState(false);
   const [viewMode, setViewMode] = useState(() => viewModeStorage.get('ai_cortex_view_mode') || 'read');
   const [fullWidth, setFullWidth] = useState(() => viewModeStorage.get('ai_cortex_full_width') === 'true');
@@ -74,7 +108,7 @@ export default function NoteEditor({
     setContent(note.content || '');
     setStatus(note.status || 'active');
     setDueDate(note.dueDate ? note.dueDate.slice(0, 10) : '');
-    setSaveStatus('saved');
+    saveRef.current.reset(note.revision, noteFields(note));
     setLastSavedAt(null);
     setRefreshState('idle');
     setShowWikilinks(false);
@@ -87,29 +121,29 @@ export default function NoteEditor({
     dueDate !== (note.dueDate ? note.dueDate.slice(0, 10) : '')
   );
 
+  // 'saved' | 'unsaved' (edited, debounce pending) | 'saving' | 'error' | 'conflict'
+  const saveStatus = saveState.status === 'idle' ? (isDirty ? 'unsaved' : 'saved') : saveState.status;
+
   // Persist the current fields immediately (used by auto-save, the Save button, and Ctrl/Cmd+S)
-  const saveNow = async () => {
+  const saveNow = () => {
     clearTimeout(saveTimerRef.current);
-    const { note: current, title, content, status, dueDate } = latestRef.current;
-    if (!current) return;
-    setSaveStatus('saving');
+    return saveRef.current.save();
+  };
+
+  const copyMyText = async () => {
     try {
-      await onUpdateNote(current.id, { title, content, status, dueDate: dueDate || null });
-      const l = latestRef.current;
-      // Skip if the user kept typing while the request was in flight; the next save covers it
-      if (l.title === title && l.content === content && l.status === status && l.dueDate === dueDate) {
-        setSaveStatus('saved');
-        setLastSavedAt(new Date());
-      }
+      await navigator.clipboard.writeText(content);
+      setCopiedMine(true);
+      setTimeout(() => setCopiedMine(false), 2000);
     } catch (err) {
-      setSaveStatus('error');
+      console.error('Could not copy to clipboard:', err);
     }
   };
 
   // Reload the note from the server, replacing what's in the editor (e.g. after an AI edited it)
-  const refreshNow = async () => {
+  const refreshNow = async ({ skipConfirm = false } = {}) => {
     if (!note || refreshState === 'loading') return;
-    if (isDirty && !window.confirm('You have unsaved changes in this note. Reload from the server and discard them?')) {
+    if (!skipConfirm && isDirty && !window.confirm('You have unsaved changes in this note. Reload from the server and discard them?')) {
       return;
     }
     clearTimeout(saveTimerRef.current);
@@ -126,7 +160,7 @@ export default function NoteEditor({
       setContent(fresh.content || '');
       setStatus(fresh.status || 'active');
       setDueDate(fresh.dueDate ? fresh.dueDate.slice(0, 10) : '');
-      setSaveStatus('saved');
+      saveRef.current.reset(fresh.revision, noteFields(fresh));
       setRefreshState(changed ? 'updated' : 'current');
     } catch (err) {
       setRefreshState('error');
@@ -136,17 +170,12 @@ export default function NoteEditor({
 
   useEffect(() => () => clearTimeout(refreshTimerRef.current), []);
 
-  // Debounced auto-save
+  // Debounced auto-save. Paused while a conflict is unresolved (the banner handles it).
   useEffect(() => {
-    if (!note) return;
-    if (!isDirty) {
-      setSaveStatus('saved');
-      return;
-    }
-    setSaveStatus('unsaved');
+    if (!note || !isDirty || saveState.conflict) return;
     saveTimerRef.current = setTimeout(saveNow, 600);
     return () => clearTimeout(saveTimerRef.current);
-  }, [title, content, status, dueDate, note]);
+  }, [title, content, status, dueDate, note, saveState.conflict]);
 
   // Copy AI context bundle for Claude / Gemini web apps
   const copyAiContext = () => {
@@ -344,11 +373,12 @@ ${backlinksText}
             {saveStatus === 'saving' && <Loader2 size={13} className="spin" />}
             {saveStatus === 'saved' && <Check size={13} />}
             {saveStatus === 'unsaved' && <span className="save-status-dot" />}
-            {saveStatus === 'error' && <AlertCircle size={13} />}
+            {(saveStatus === 'error' || saveStatus === 'conflict') && <AlertCircle size={13} />}
             <span>
               {saveStatus === 'saving' && 'Saving…'}
               {saveStatus === 'unsaved' && 'Unsaved changes'}
               {saveStatus === 'error' && 'Save failed'}
+              {saveStatus === 'conflict' && 'Not saved: conflict'}
               {saveStatus === 'saved' && (lastSavedAt
                 ? `Saved at ${lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
                 : 'All changes saved')}
@@ -383,7 +413,7 @@ ${backlinksText}
           <button
             type="button"
             className={`btn-refresh ${refreshState !== 'idle' && refreshState !== 'loading' ? `is-${refreshState}` : ''}`}
-            onClick={refreshNow}
+            onClick={() => refreshNow()}
             disabled={refreshState === 'loading'}
             title="Reload this note from the server (picks up changes made by an AI)"
           >
@@ -401,7 +431,7 @@ ${backlinksText}
             type="button"
             className="btn-save"
             onClick={saveNow}
-            disabled={saveStatus === 'saving' || (!isDirty && saveStatus !== 'error')}
+            disabled={saveStatus === 'saving' || saveStatus === 'conflict' || (!isDirty && saveStatus !== 'error')}
             title="Save now (Ctrl/Cmd + S)"
           >
             <Save size={14} />
@@ -455,6 +485,30 @@ ${backlinksText}
           </button>
         </div>
       </div>
+
+      {saveState.conflict && (
+        <div className="conflict-banner" role="alert">
+          <AlertCircle size={18} />
+          <div className="conflict-banner-text">
+            <strong>This note was changed somewhere else.</strong>
+            <span>
+              Your latest edits are not saved. The saved version is now at revision {saveState.conflict.currentRevision}.
+              Copy your text first if you want to keep it.
+            </span>
+          </div>
+          <div className="conflict-banner-actions">
+            <button type="button" className="btn-conflict" onClick={copyMyText}>
+              {copiedMine ? 'Copied' : 'Copy my text'}
+            </button>
+            <button type="button" className="btn-conflict" onClick={() => refreshNow({ skipConfirm: true })}>
+              Reload (discard my edits)
+            </button>
+            <button type="button" className="btn-conflict btn-conflict-danger" onClick={() => saveRef.current.overwrite()}>
+              Overwrite the latest version
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Editor Content Area */}
       <div className={`editor-content-container ${fullWidth ? 'is-full-width' : ''}`}>

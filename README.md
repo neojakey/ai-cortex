@@ -20,14 +20,14 @@ Designed to connect natively to **Claude Desktop (Claude Pro)** and **Gemini** v
 - 📋 **Notion-Style Database Views**:
   - **Database Grid**: Sortable, filterable table view with editable statuses.
   - **Global Action Items**: Automatically extracts and aggregates `- [ ]` tasks from every note into a consolidated checklist. Ticking one edits its source note safely: the task is matched by its text, not just its line number, so an edit above it can't tick the wrong one.
-- ✍️ **Read / Edit Editor**: Notes open in a rendered **Read** view (sanitized Markdown, clickable `[[wikilinks]]`, read-only task checkboxes) and switch to raw Markdown in **Edit** mode. Autosave shows a clear status (saved / unsaved / saving / failed), **Save** (`Ctrl/Cmd + S`) writes immediately, and **Refresh** pulls in changes an AI made over MCP. An optional full-width layout is one click away.
+- ✍️ **Read / Edit Editor**: Notes open in a rendered **Read** view (sanitized Markdown, clickable `[[wikilinks]]`, read-only task checkboxes) and switch to raw Markdown in **Edit** mode. Autosave shows a clear status (saved / unsaved / saving / failed), **Save** (`Ctrl/Cmd + S`) writes immediately, and **Refresh** pulls in changes an AI made over MCP. If an AI changes a note while you are editing it, the editor never overwrites it: a banner offers **Copy my text**, **Reload**, or an explicit **Overwrite the latest version**. An optional full-width layout is one click away.
 - 🗂️ **Projects**: Scope notes by project (for example one per product) so search and lists don't blend together. Filter from the sidebar; every MCP tool that creates, updates, searches or lists notes accepts an optional `project`.
 - 🛡️ **Safe Concurrent Writes**: People and AI agents write to the same notes, so every note carries a `revision`. An update that says which revision it read is refused if the note has changed since, instead of silently overwriting it. See **Safe Writes for Agents** below.
 - 🕘 **Version History**: Every title or content change is snapshotted (`GET /api/notes/:id/versions`). `POST /api/notes/:id/versions/:versionId/restore` re-applies a version as a normal edit, so the restore itself can be undone. (API only for now; there is no version UI yet.)
 - 📅 **Daily Journaling**: Jump to or create today's daily note with one keystroke (`Alt + D`).
 - 🎨 **Adaptive Theming**: 3-way **Dark / Light / System** ambiance (follows the OS and reacts live to changes), 15 curated accent palettes plus a custom-colour picker. Preferences persist in `localStorage`; the theme is applied before first paint to avoid any flash. Toggle modes with `Alt + T` or from **Settings → Appearance**.
 - 📦 **Obsidian Vault 1-Click Export & Import**: Export all notes and attachments as a standard `.zip` vault, or import existing Markdown vaults. Imports are all-or-nothing for notes, keep the `id` in each note's frontmatter, and are safe to repeat: notes and attachments that already exist are skipped, never overwritten or duplicated.
-- 🧪 **Complete Test Suite**: 37 automated unit and integration tests (about 3 seconds, `npm test`). Integration tests run against a separate database and a temp attachment folder, so they can never touch your real notes.
+- 🧪 **Complete Test Suite**: 46 automated unit and integration tests (about 3 seconds, `npm test`). Integration tests run against a separate database and a temp attachment folder, so they can never touch your real notes.
 
 ---
 
@@ -113,6 +113,7 @@ Over REST the same conflict is HTTP `409` with `{ "error": "<readable message>",
 
 Good to know:
 
+- The web editor uses the same check on every save, and saves one at a time, so it can't conflict with itself.
 - Leaving `expectedRevision` out still works, so existing clients keep working, but MCP replies include a warning and the server logs it. Always pass it.
 - `append: true` on `ai_cortex_update_note` is applied atomically on the server, so several agents appending at once never lose each other's text.
 - A save that changes nothing doesn't bump the revision. Trashing and restoring a note do.

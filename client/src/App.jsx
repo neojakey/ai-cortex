@@ -236,7 +236,12 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok || !data.note) {
-        throw new Error(data.error || `Save failed (${res.status})`);
+        // Carry the machine-readable parts so the editor can tell a conflict from a failure
+        throw Object.assign(new Error(data.error || `Save failed (${res.status})`), {
+          status: res.status,
+          code: data.code,
+          currentRevision: data.currentRevision
+        });
       }
       if (data.note) {
         // Update local notes list title/preview if changed
@@ -258,6 +263,7 @@ export default function App() {
           setActiveNote(data.note);
         }
       }
+      return data.note;
     } catch (err) {
       console.error('Failed to update note:', err);
       throw err; // let callers (e.g. the editor's save indicator) react to the failure
