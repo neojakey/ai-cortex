@@ -9,6 +9,7 @@ import { attachmentService } from './attachmentService.js';
 // Guards against decompression bombs on import
 const MAX_ZIP_ENTRIES = 5000;
 const MAX_ZIP_UNCOMPRESSED_BYTES = 512 * 1024 * 1024; // 512 MB
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function coercePropertyValue(type, value) {
   if (type === 'number') return Number(value);
@@ -119,8 +120,65 @@ export class ExportService {
   }
 
   /**
-   * Import notes from an Obsidian / Markdown ZIP archive buffer
+   * Parse the frontmatter (title, id, status, tags) out of an exported/Obsidian note.
+   * @param {string} text raw markdown file contents
+   * @param {string} filename fallback title (file name without extension)
+   */
+  _parseVaultNote(text, filename) {
+    let title = filename;
+    let content = text;
+    let tags = [];
+    let status = 'active';
+    let id = null;
+
+    const fmMatch = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+    if (fmMatch) {
+      content = fmMatch[2];
+      const fmText = fmMatch[1];
+
+      const titleMatch = fmText.match(/^title:\s*"?([^"\n\r]+)"?/m);
+      if (titleMatch) title = titleMatch[1].trim();
+
+      // Only trust a well-formed UUID; anything else is ignored rather than stored.
+      const idMatch = fmText.match(/^id:\s*"?([0-9a-f-]{36})"?\s*$/mi);
+      if (idMatch && UUID_RE.test(idMatch[1])) id = idMatch[1].toLowerCase();
+
+      const statusMatch = fmText.match(/^status:\s*"?(active|archived|trash)"?/mi);
+      if (statusMatch) status = statusMatch[1].toLowerCase();
+
+      // Block-style: "tags:\n  - foo\n  - bar"
+      const blockTags = fmText.match(/^tags:\s*\r?\n((?:[ \t]*-[ \t]*.+\r?\n?)+)/m);
+      if (blockTags) {
+        tags = blockTags[1]
+          .split(/\r?\n/)
+          .map((l) => l.replace(/^[ \t]*-[ \t]*/, '').trim().replace(/^["']|["']$/g, ''))
+          .filter(Boolean);
+      } else {
+        // Inline-style: "tags: [foo, bar]"
+        const inlineTags = fmText.match(/^tags:\s*\[([^\]]*)\]/m);
+        if (inlineTags) {
+          tags = inlineTags[1]
+            .split(',')
+            .map((s) => s.trim().replace(/^["']|["']$/g, ''))
+            .filter(Boolean);
+        }
+      }
+    }
+
+    return { id, title, content, tags, status };
+  }
+
+  /**
+   * Import notes from an Obsidian / Markdown ZIP archive buffer.
+   *
+   * All-or-nothing for notes: they are written in one transaction, so a failure
+   * leaves no partial import. Attachment records created in the same run are
+   * removed on failure too. Re-importing is safe: a note is skipped (never
+   * overwritten) if its frontmatter id already exists or a note with the same
+   * title and content does; an attachment is skipped if the same filename and
+   * hash are already stored.
    * @param {Buffer} zipBuffer
+   * @returns {Promise<{importedNotes: number, skippedNotes: number, importedAttachments: number, skippedAttachments: number}>}
    */
   async importVaultFromZip(zipBuffer) {
     const zip = new AdmZip(zipBuffer);
@@ -138,75 +196,80 @@ export class ExportService {
       throw new Error('Zip archive exceeds the maximum allowed uncompressed size');
     }
 
-    let importedNotes = 0;
-    let importedAttachments = 0;
+    const result = { importedNotes: 0, skippedNotes: 0, importedAttachments: 0, skippedAttachments: 0 };
+    const savedAttachmentIds = [];
+    const conn = await pool.getConnection();
 
-    for (const entry of entries) {
-      if (entry.isDirectory) continue;
+    try {
+      await conn.beginTransaction();
 
-      const entryName = entry.entryName;
+      for (const entry of entries) {
+        if (entry.isDirectory) continue;
 
-      // Handle Markdown files
-      if (entryName.endsWith('.md')) {
-        const text = entry.getData().toString('utf8');
-        const filename = path.basename(entryName, '.md');
+        const entryName = entry.entryName;
 
-        let title = filename;
-        let content = text;
-        let tags = [];
-        let status = 'active';
+        // Handle Markdown files
+        if (entryName.endsWith('.md')) {
+          const text = entry.getData().toString('utf8');
+          const parsed = this._parseVaultNote(text, path.basename(entryName, '.md'));
 
-        const fmMatch = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
-        if (fmMatch) {
-          content = fmMatch[2];
-          const fmText = fmMatch[1];
-
-          const titleMatch = fmText.match(/^title:\s*"?([^"\n\r]+)"?/m);
-          if (titleMatch) title = titleMatch[1].trim();
-
-          const statusMatch = fmText.match(/^status:\s*"?(active|archived|trash)"?/mi);
-          if (statusMatch) status = statusMatch[1].toLowerCase();
-
-          // Block-style: "tags:\n  - foo\n  - bar"
-          const blockTags = fmText.match(/^tags:\s*\r?\n((?:[ \t]*-[ \t]*.+\r?\n?)+)/m);
-          if (blockTags) {
-            tags = blockTags[1]
-              .split(/\r?\n/)
-              .map((l) => l.replace(/^[ \t]*-[ \t]*/, '').trim().replace(/^["']|["']$/g, ''))
-              .filter(Boolean);
-          } else {
-            // Inline-style: "tags: [foo, bar]"
-            const inlineTags = fmText.match(/^tags:\s*\[([^\]]*)\]/m);
-            if (inlineTags) {
-              tags = inlineTags[1]
-                .split(',')
-                .map((s) => s.trim().replace(/^["']|["']$/g, ''))
-                .filter(Boolean);
-            }
+          const [sameId] = parsed.id
+            ? await conn.query(`SELECT id FROM notes WHERE id = ?`, [parsed.id])
+            : [[]];
+          const [sameContent] = sameId.length
+            ? [[]]
+            : await conn.query(
+                `SELECT id FROM notes WHERE title = ? AND content = ? LIMIT 1`,
+                [parsed.title.trim(), parsed.content]
+              );
+          if (sameId.length || sameContent.length) {
+            result.skippedNotes++;
+            continue;
           }
+
+          await noteService.createNote({
+            id: parsed.id,
+            title: parsed.title,
+            content: parsed.content,
+            status: parsed.status,
+            customTags: parsed.tags,
+            conn
+          });
+          result.importedNotes++;
+        } else if (entryName.startsWith('attachments/') && !entryName.endsWith('/')) {
+          const buffer = entry.getData();
+          const filename = path.basename(entryName);
+
+          const [existing] = await pool.query(
+            `SELECT id FROM attachments WHERE sha256 = ? AND filename = ? LIMIT 1`,
+            [attachmentService.computeHash(buffer), filename]
+          );
+          if (existing.length) {
+            result.skippedAttachments++;
+            continue;
+          }
+
+          const saved = await attachmentService.saveAttachment({
+            filename,
+            mimeType: 'application/octet-stream',
+            buffer
+          });
+          savedAttachmentIds.push(saved.id);
+          result.importedAttachments++;
         }
-
-        await noteService.createNote({
-          title,
-          content,
-          status,
-          customTags: tags
-        });
-
-        importedNotes++;
-      } else if (entryName.startsWith('attachments/') && !entryName.endsWith('/')) {
-        const buffer = entry.getData();
-        const filename = path.basename(entryName);
-        await attachmentService.saveAttachment({
-          filename,
-          mimeType: 'application/octet-stream',
-          buffer
-        });
-        importedAttachments++;
       }
-    }
 
-    return { importedNotes, importedAttachments };
+      await conn.commit();
+      return result;
+    } catch (err) {
+      await conn.rollback();
+      for (const attachmentId of savedAttachmentIds) {
+        await attachmentService.deleteAttachment(attachmentId).catch(() => {});
+      }
+      throw err;
+    } finally {
+      conn.release();
+    }
   }
 }
 

@@ -250,6 +250,20 @@ app.get('/api/notes/:id/versions', async (req, res) => {
   }
 });
 
+app.post('/api/notes/:id/versions/:versionId/restore', async (req, res) => {
+  try {
+    const versionId = Number(req.params.versionId);
+    if (!Number.isInteger(versionId) || versionId < 1) {
+      return res.status(400).json({ error: 'Invalid version id' });
+    }
+    const note = await noteService.restoreVersion(req.params.id, versionId);
+    if (!note) return res.status(404).json({ error: 'Version not found for this note' });
+    res.json({ note });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* =========================================================================
    3. Projects, Tags & Tasks
    ========================================================================= */
@@ -277,6 +291,21 @@ app.get('/api/tasks', async (req, res) => {
     const tasks = await noteService.getTasks({ completed });
     res.json({ tasks });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/notes/:id/tasks/toggle', async (req, res) => {
+  const { line, text, completed } = req.body || {};
+  if (!Number.isInteger(line) || line < 1 || typeof text !== 'string' || typeof completed !== 'boolean') {
+    return res.status(400).json({ error: 'line (integer), text (string) and completed (boolean) are required' });
+  }
+  try {
+    const note = await noteService.toggleTask(req.params.id, { line, text, completed });
+    res.json({ note });
+  } catch (err) {
+    if (err.code === 'NOT_FOUND') return res.status(404).json({ error: err.message });
+    if (err.code === 'TASK_CONFLICT') return res.status(409).json({ error: err.message });
     res.status(500).json({ error: err.message });
   }
 });

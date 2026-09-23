@@ -40,25 +40,20 @@ export default function TasksView({ onSelectNote }) {
         confetti({ particleCount: 40, spread: 60, origin: { y: 0.8 } });
       }
 
-      // Fetch note to update line
-      const res = await fetch(`/api/notes/${task.noteId}`);
-      const data = await res.json();
-      if (!data.note) return;
-
-      const lines = data.note.content.split('\n');
-      if (lines[task.line - 1]) {
-        lines[task.line - 1] = lines[task.line - 1].replace(
-          newCompleted ? /\[ \]/ : /\[[xX]\]/,
-          newCompleted ? '[x]' : '[ ]'
-        );
-        await fetch(`/api/notes/${task.noteId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: lines.join('\n') })
-        });
+      // The server matches the task by text as well as line, so a note edited since this
+      // list loaded can't have the wrong task ticked. On any failure, reload the true state.
+      const res = await fetch(`/api/notes/${task.noteId}/tasks/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ line: task.line, text: task.text, completed: newCompleted })
+      });
+      if (!res.ok) {
+        console.error('Failed to toggle task:', (await res.json().catch(() => ({}))).error || res.status);
+        fetchTasks();
       }
     } catch (err) {
       console.error('Failed to toggle task:', err);
+      fetchTasks();
     }
   };
 

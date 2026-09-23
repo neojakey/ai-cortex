@@ -24,30 +24,35 @@ export class NoteService {
     dueDate = null,
     properties = {},
     customTags = [],
-    project = null
+    project = null,
+    id: providedId = null,
+    conn: externalConn = null
   }) {
     if (!title || typeof title !== 'string') {
       throw new Error('Note title is required');
     }
 
-    const id = crypto.randomUUID();
+    // With an external connection the caller owns the transaction (e.g. vault import),
+    // so nothing is committed, rolled back, or released here.
+    const ownsConn = !externalConn;
+    const conn = externalConn || await pool.getConnection();
+    const id = providedId || crypto.randomUUID();
     let baseSlug = slugify(title) || 'untitled';
     let slug = baseSlug;
 
-    // Check slug collision
-    let counter = 1;
-    while (true) {
-      const [existing] = await pool.query(`SELECT id FROM notes WHERE slug = ?`, [slug]);
-      if (!existing.length) break;
-      slug = `${baseSlug}-${counter++}`;
-    }
-
-    const projectRecord = project ? await projectService.getOrCreateByName(project) : null;
-    const contentText = markdownToPlaintext(content);
-    const conn = await pool.getConnection();
-
     try {
-      await conn.beginTransaction();
+      // Check slug collision (on the same connection so uncommitted rows are seen)
+      let counter = 1;
+      while (true) {
+        const [existing] = await conn.query(`SELECT id FROM notes WHERE slug = ?`, [slug]);
+        if (!existing.length) break;
+        slug = `${baseSlug}-${counter++}`;
+      }
+
+      const projectRecord = project ? await projectService.getOrCreateByName(project) : null;
+      const contentText = markdownToPlaintext(content);
+
+      if (ownsConn) await conn.beginTransaction();
 
       // 1. Insert note
       await conn.query(
@@ -113,13 +118,15 @@ export class NoteService {
         [id, title.trim(), content]
       );
 
+      if (!ownsConn) return { id, slug };
+
       await conn.commit();
       return this.getNoteById(id);
     } catch (err) {
-      await conn.rollback();
+      if (ownsConn) await conn.rollback();
       throw err;
     } finally {
-      conn.release();
+      if (ownsConn) conn.release();
     }
   }
 
@@ -189,7 +196,9 @@ export class NoteService {
       );
 
       // 2. Snapshot if content or title changed
-      if (content !== undefined && content !== existing.content) {
+      const contentChanged = content !== undefined && content !== existing.content;
+      const titleChanged = title !== undefined && newTitle !== existing.title;
+      if (contentChanged || titleChanged) {
         await conn.query(
           `INSERT INTO note_versions (note_id, title, content) VALUES (?, ?, ?)`,
           [id, newTitle, newContent]
@@ -603,6 +612,49 @@ export class NoteService {
       ORDER BY count DESC, t.name ASC
     `);
     return rows.map((r) => ({ name: r.name, count: Number(r.count) }));
+  }
+
+  /**
+   * Toggle a markdown task by matching its text, not just its line number, so an
+   * edit above the task (by a person or an agent) can't make us tick the wrong one.
+   * Prefers the task at `line`; falls back to the only task with that text.
+   * @throws {Error} code NOT_FOUND (no such note) or TASK_CONFLICT (task moved/ambiguous/gone)
+   */
+  async toggleTask(noteId, { line, text, completed }) {
+    const note = await this.getNoteById(noteId);
+    if (!note) {
+      const err = new Error(`Note not found: ${noteId}`);
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+
+    const matches = extractTasks(note.content).filter((t) => t.text === text);
+    const target = matches.find((t) => t.line === line) || (matches.length === 1 ? matches[0] : null);
+    if (!target) {
+      const err = new Error('Task could not be located; the note has changed. Refresh and try again.');
+      err.code = 'TASK_CONFLICT';
+      throw err;
+    }
+
+    if (target.completed === completed) return note;
+
+    const lines = note.content.split('\n');
+    lines[target.line - 1] = lines[target.line - 1].replace(/\[[ xX]\]/, completed ? '[x]' : '[ ]');
+    return this.updateNote(noteId, { content: lines.join('\n') });
+  }
+
+  /**
+   * Restore a note's title and content from a saved version. Applied as a normal
+   * edit, so the restore itself is snapshotted and can be undone.
+   * @returns {Promise<Object|null>} the updated note, or null if the version isn't this note's
+   */
+  async restoreVersion(noteId, versionId) {
+    const [rows] = await pool.query(
+      `SELECT title, content FROM note_versions WHERE id = ? AND note_id = ?`,
+      [versionId, noteId]
+    );
+    if (!rows.length) return null;
+    return this.updateNote(noteId, { title: rows[0].title, content: rows[0].content });
   }
 
   /**
