@@ -15,7 +15,11 @@ import {
   Eye,
   Pencil,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Save,
+  RefreshCw,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { renderNoteMarkdown, WIKILINK_PREFIX } from '../lib/renderMarkdown.js';
 
@@ -33,6 +37,7 @@ export default function NoteEditor({
   note,
   allNotes,
   onUpdateNote,
+  onRefreshNote,
   onDeleteNote,
   onSelectNote
 }) {
@@ -42,7 +47,15 @@ export default function NoteEditor({
   const [status, setStatus] = useState(note?.status || 'active');
   const [dueDate, setDueDate] = useState(note?.dueDate ? note.dueDate.slice(0, 10) : '');
   const [copiedContext, setCopiedContext] = useState(false);
-  const [saveStatus, setSaveStatus] = useState('Saved');
+  // 'saved' | 'unsaved' (edited, debounce pending) | 'saving' (request in flight) | 'error'
+  const [saveStatus, setSaveStatus] = useState('saved');
+  const [lastSavedAt, setLastSavedAt] = useState(null);
+  // 'idle' | 'loading' | 'updated' (server had newer content) | 'current' (already up to date) | 'error'
+  const [refreshState, setRefreshState] = useState('idle');
+  const refreshTimerRef = useRef(null);
+  const saveTimerRef = useRef(null);
+  const latestRef = useRef({});
+  latestRef.current = { note, title, content, status, dueDate };
   const [isUploading, setIsUploading] = useState(false);
   const [viewMode, setViewMode] = useState(() => viewModeStorage.get('ai_cortex_view_mode') || 'read');
   const [fullWidth, setFullWidth] = useState(() => viewModeStorage.get('ai_cortex_full_width') === 'true');
@@ -61,38 +74,78 @@ export default function NoteEditor({
     setContent(note.content || '');
     setStatus(note.status || 'active');
     setDueDate(note.dueDate ? note.dueDate.slice(0, 10) : '');
-    setSaveStatus('Saved');
+    setSaveStatus('saved');
+    setLastSavedAt(null);
+    setRefreshState('idle');
     setShowWikilinks(false);
   }, [note?.id]);
+
+  const isDirty = !!note && (
+    title !== note.title ||
+    content !== note.content ||
+    status !== note.status ||
+    dueDate !== (note.dueDate ? note.dueDate.slice(0, 10) : '')
+  );
+
+  // Persist the current fields immediately (used by auto-save, the Save button, and Ctrl/Cmd+S)
+  const saveNow = async () => {
+    clearTimeout(saveTimerRef.current);
+    const { note: current, title, content, status, dueDate } = latestRef.current;
+    if (!current) return;
+    setSaveStatus('saving');
+    try {
+      await onUpdateNote(current.id, { title, content, status, dueDate: dueDate || null });
+      const l = latestRef.current;
+      // Skip if the user kept typing while the request was in flight; the next save covers it
+      if (l.title === title && l.content === content && l.status === status && l.dueDate === dueDate) {
+        setSaveStatus('saved');
+        setLastSavedAt(new Date());
+      }
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
+  // Reload the note from the server, replacing what's in the editor (e.g. after an AI edited it)
+  const refreshNow = async () => {
+    if (!note || refreshState === 'loading') return;
+    if (isDirty && !window.confirm('You have unsaved changes in this note. Reload from the server and discard them?')) {
+      return;
+    }
+    clearTimeout(saveTimerRef.current);
+    clearTimeout(refreshTimerRef.current);
+    setRefreshState('loading');
+    try {
+      const fresh = await onRefreshNote(note.id);
+      const changed =
+        fresh.title !== title ||
+        fresh.content !== content ||
+        fresh.status !== status ||
+        (fresh.dueDate ? fresh.dueDate.slice(0, 10) : '') !== dueDate;
+      setTitle(fresh.title || '');
+      setContent(fresh.content || '');
+      setStatus(fresh.status || 'active');
+      setDueDate(fresh.dueDate ? fresh.dueDate.slice(0, 10) : '');
+      setSaveStatus('saved');
+      setRefreshState(changed ? 'updated' : 'current');
+    } catch (err) {
+      setRefreshState('error');
+    }
+    refreshTimerRef.current = setTimeout(() => setRefreshState('idle'), 2500);
+  };
+
+  useEffect(() => () => clearTimeout(refreshTimerRef.current), []);
 
   // Debounced auto-save
   useEffect(() => {
     if (!note) return;
-    if (
-      title === note.title &&
-      content === note.content &&
-      status === note.status &&
-      dueDate === (note.dueDate ? note.dueDate.slice(0, 10) : '')
-    ) {
+    if (!isDirty) {
+      setSaveStatus('saved');
       return;
     }
-
-    setSaveStatus('Saving...');
-    const timer = setTimeout(async () => {
-      try {
-        await onUpdateNote(note.id, {
-          title,
-          content,
-          status,
-          dueDate: dueDate || null
-        });
-        setSaveStatus('Saved');
-      } catch (err) {
-        setSaveStatus('Save error');
-      }
-    }, 600);
-
-    return () => clearTimeout(timer);
+    setSaveStatus('unsaved');
+    saveTimerRef.current = setTimeout(saveNow, 600);
+    return () => clearTimeout(saveTimerRef.current);
   }, [title, content, status, dueDate, note]);
 
   // Copy AI context bundle for Claude / Gemini web apps
@@ -132,6 +185,9 @@ ${backlinksText}
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault();
         copyAiContext();
+      } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        saveNow();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -279,7 +335,25 @@ ${backlinksText}
           <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{wordCount} words</span>
           <span style={{ opacity: 0.4 }}>•</span>
           <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{readingTime} min read</span>
-          <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 6 }}>({saveStatus})</span>
+          <span
+            key={saveStatus === 'saved' ? `saved-${lastSavedAt?.getTime() ?? 0}` : saveStatus}
+            className={`save-status save-status-${saveStatus} ${lastSavedAt ? 'just-saved' : ''}`}
+            role="status"
+            aria-live="polite"
+          >
+            {saveStatus === 'saving' && <Loader2 size={13} className="spin" />}
+            {saveStatus === 'saved' && <Check size={13} />}
+            {saveStatus === 'unsaved' && <span className="save-status-dot" />}
+            {saveStatus === 'error' && <AlertCircle size={13} />}
+            <span>
+              {saveStatus === 'saving' && 'Saving…'}
+              {saveStatus === 'unsaved' && 'Unsaved changes'}
+              {saveStatus === 'error' && 'Save failed'}
+              {saveStatus === 'saved' && (lastSavedAt
+                ? `Saved at ${lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                : 'All changes saved')}
+            </span>
+          </span>
         </div>
 
         <div className="editor-actions">
@@ -304,6 +378,35 @@ ${backlinksText}
               <span>Edit</span>
             </button>
           </div>
+
+          {/* Reload from server (pick up edits made by an AI) */}
+          <button
+            type="button"
+            className={`btn-refresh ${refreshState !== 'idle' && refreshState !== 'loading' ? `is-${refreshState}` : ''}`}
+            onClick={refreshNow}
+            disabled={refreshState === 'loading'}
+            title="Reload this note from the server (picks up changes made by an AI)"
+          >
+            {refreshState === 'updated' || refreshState === 'current' ? <Check size={14} /> : <RefreshCw size={14} className={refreshState === 'loading' ? 'spin' : ''} />}
+            <span>
+              {refreshState === 'updated' && 'Updated'}
+              {refreshState === 'current' && 'Up to date'}
+              {refreshState === 'error' && 'Refresh failed'}
+              {(refreshState === 'idle' || refreshState === 'loading') && 'Refresh'}
+            </span>
+          </button>
+
+          {/* Save now */}
+          <button
+            type="button"
+            className="btn-save"
+            onClick={saveNow}
+            disabled={saveStatus === 'saving' || (!isDirty && saveStatus !== 'error')}
+            title="Save now (Ctrl/Cmd + S)"
+          >
+            <Save size={14} />
+            <span>{saveStatus === 'error' ? 'Retry' : 'Save'}</span>
+          </button>
 
           {/* Full-width toggle */}
           <button

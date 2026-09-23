@@ -236,6 +236,9 @@ export default function App() {
         body: JSON.stringify(updatePayload)
       });
       const data = await res.json();
+      if (!res.ok || !data.note) {
+        throw new Error(data.error || `Save failed (${res.status})`);
+      }
       if (data.note) {
         // Update local notes list title/preview if changed
         setNotes((prev) =>
@@ -258,7 +261,18 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to update note:', err);
+      throw err; // let callers (e.g. the editor's save indicator) react to the failure
     }
+  };
+
+  // Re-fetch a note from the server (e.g. after an AI edited it via MCP) and return it
+  const handleRefreshNote = async (id) => {
+    const res = await fetch(`/api/notes/${id}`);
+    const data = await res.json();
+    if (!res.ok || !data.note) throw new Error(data.error || `Refresh failed (${res.status})`);
+    setActiveNote(data.note);
+    fetchData(); // keep sidebar titles/tags/backlinks in sync too
+    return data.note;
   };
 
   // Soft delete note to trash
@@ -352,6 +366,7 @@ export default function App() {
             note={activeNote}
             allNotes={notes}
             onUpdateNote={handleUpdateNote}
+            onRefreshNote={handleRefreshNote}
             onDeleteNote={handleDeleteNote}
             onSelectNote={(id) => setActiveNoteId(id)}
           />

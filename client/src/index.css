@@ -618,6 +618,104 @@ button, input, textarea, select {
   background: var(--bg-surface-hover);
 }
 
+.btn-refresh {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.btn-refresh:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+.btn-refresh:disabled { cursor: default; }
+.btn-refresh.is-updated,
+.btn-refresh.is-current { color: var(--accent-emerald); border-color: var(--accent-emerald); }
+.btn-refresh.is-error { color: var(--accent-rose); border-color: var(--accent-rose); }
+.btn-refresh .spin { animation: save-spin 0.9s linear infinite; }
+
+.btn-save {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.btn-save:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+.btn-save:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.save-status-saved {
+  color: var(--accent-emerald);
+  background: color-mix(in srgb, var(--accent-emerald) 12%, transparent);
+}
+.save-status-saved.just-saved {
+  animation: save-flash 1.4s ease-out;
+}
+.save-status-saving {
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border-color: var(--border-dim);
+}
+.save-status-unsaved {
+  color: var(--accent-amber);
+  background: color-mix(in srgb, var(--accent-amber) 12%, transparent);
+}
+.save-status-error {
+  color: var(--accent-rose);
+  background: color-mix(in srgb, var(--accent-rose) 12%, transparent);
+}
+.save-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.save-status .spin {
+  animation: save-spin 0.9s linear infinite;
+}
+@keyframes save-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes save-flash {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-emerald) 55%, transparent); transform: scale(1.06); }
+  100% { box-shadow: 0 0 0 10px transparent; transform: scale(1); }
+}
+
 .view-mode-toggle {
   display: flex;
   align-items: center;
