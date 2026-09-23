@@ -143,10 +143,11 @@ export class AttachmentService {
     // Delete DB record
     await pool.query(`DELETE FROM attachments WHERE id = ?`, [id]);
 
-    // Check if any other records still reference this SHA256
+    // Only remove the file once no record points at this exact path. Counting by
+    // sha256 would leak the file when the same bytes are stored under two extensions.
     const [others] = await pool.query(
-      `SELECT COUNT(*) as cnt FROM attachments WHERE sha256 = ?`,
-      [item.sha256]
+      `SELECT COUNT(*) as cnt FROM attachments WHERE storage_path = ?`,
+      [item.storagePath]
     );
 
     if (others[0].cnt === 0) {
