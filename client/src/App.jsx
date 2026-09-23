@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { parseHash, formatHash } from './lib/route.js';
 import Sidebar from './components/Sidebar.jsx';
 import NoteEditor from './components/NoteEditor.jsx';
 import TableView from './components/TableView.jsx';
@@ -29,9 +30,9 @@ const clampSidebarWidth = (w) => Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBA
 
 export default function App() {
   const [notes, setNotes] = useState([]);
-  const [activeNoteId, setActiveNoteId] = useState(null);
+  const [activeNoteId, setActiveNoteId] = useState(() => parseHash(window.location.hash).noteId);
   const [activeNote, setActiveNote] = useState(null);
-  const [activeView, setActiveView] = useState('document'); // 'document', 'table', 'tasks', 'trash'
+  const [activeView, setActiveView] = useState(() => parseHash(window.location.hash).view); // 'document', 'table', 'tasks', 'trash'
   const [tags, setTags] = useState([]);
   const [selectedTag, setSelectedTag] = useState(null);
   const [projects, setProjects] = useState([]);
@@ -129,6 +130,26 @@ export default function App() {
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Keep the URL hash in step with the view/note so Back and Forward work.
+  useEffect(() => {
+    const wanted = formatHash(activeView, activeNoteId);
+    const current = window.location.hash || '#/';
+    if (current === wanted) return;
+    // The first automatic selection replaces the empty URL instead of adding a history entry.
+    if (!window.location.hash) window.history.replaceState(null, '', wanted);
+    else window.location.hash = wanted;
+  }, [activeView, activeNoteId]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const { view, noteId } = parseHash(window.location.hash);
+      setActiveView(view);
+      if (noteId) setActiveNoteId(noteId);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   // Fetch all active notes and tags
   const fetchData = useCallback(async () => {
