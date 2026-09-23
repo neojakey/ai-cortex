@@ -51,7 +51,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'ai_cortex_read_note',
-        description: 'Read the full content, backlinks, tags, and properties of a note by title, slug, or ID.',
+        description: 'Read the full content, backlinks, tags, and properties of a note by title, slug, or ID. The result includes `revision`; pass it as `expectedRevision` when updating so you never overwrite someone else\'s newer edit.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -105,7 +105,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'ai_cortex_update_note',
-        description: 'Update or append content to an existing note in AI-Cortex.',
+        description: 'Update or append content to an existing note in AI-Cortex. Always pass `expectedRevision` (the `revision` from your last read of the note): if the note has changed since, the update is refused with REVISION_CONFLICT and you must re-read, merge your change, and retry.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -124,6 +124,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             project: {
               type: 'string',
               description: 'Optional project name to reassign this note to. Created automatically if it does not exist yet.'
+            },
+            expectedRevision: {
+              type: 'integer',
+              description: 'The `revision` you got when you last read this note. The update is refused if the note has changed since. Strongly recommended.'
             }
           },
           required: ['idOrTitle', 'content']
@@ -261,20 +265,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
-        let newContent = args.content;
-        if (args.append) {
-          newContent = `${note.content}\n\n${args.content}`;
+        // Append is applied by the service under the row lock, so concurrent appends all persist.
+        const updatePayload = args.append
+          ? { appendContent: args.content }
+          : { content: args.content };
+        if (args.project !== undefined) updatePayload.project = args.project;
+        const checked = args.expectedRevision !== undefined && args.expectedRevision !== null;
+        if (checked) updatePayload.expectedRevision = args.expectedRevision;
+
+        let updated;
+        try {
+          updated = await noteService.updateNote(note.id, updatePayload);
+        } catch (err) {
+          if (err.code === 'REVISION_CONFLICT') {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    error: 'REVISION_CONFLICT',
+                    message: `This note changed since you read it (it is now at revision ${err.currentRevision}). ` +
+                      'Re-read the note, merge your change into the latest content, and retry with the new revision as expectedRevision.',
+                    currentRevision: err.currentRevision
+                  }, null, 2)
+                }
+              ],
+              isError: true
+            };
+          }
+          throw err;
         }
 
-        const updatePayload = { content: newContent };
-        if (args.project !== undefined) updatePayload.project = args.project;
-
-        const updated = await noteService.updateNote(note.id, updatePayload);
+        let warning = '';
+        if (!checked) {
+          console.error(`[mcp] ai_cortex_update_note called without expectedRevision (note ${note.id})`);
+          warning = 'WARNING: expectedRevision was not provided, so this write was not checked against concurrent edits. ' +
+            'Read the note first and pass its `revision` as expectedRevision.\n\n';
+        }
         return {
           content: [
             {
               type: 'text',
-              text: `Note updated successfully!\n\n` + JSON.stringify(updated, null, 2)
+              text: `Note updated successfully! (now at revision ${updated.revision})\n\n${warning}` + JSON.stringify(updated, null, 2)
             }
           ]
         };

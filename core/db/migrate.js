@@ -49,6 +49,16 @@ export async function runMigrations() {
       await conn.query(`ALTER TABLE notes ADD COLUMN project_id VARCHAR(36) NULL;`);
     }
 
+    // Optimistic-concurrency counter: bumped on every change to a note so a writer
+    // can prove it edited the latest version (see noteService `expectedRevision`).
+    const [revisionColRows] = await conn.query(`
+      SELECT COLUMN_NAME FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notes' AND COLUMN_NAME = 'revision'
+    `);
+    if (!revisionColRows.length) {
+      await conn.query(`ALTER TABLE notes ADD COLUMN revision INT UNSIGNED NOT NULL DEFAULT 1;`);
+    }
+
     const [fkRows] = await conn.query(`
       SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notes' AND CONSTRAINT_NAME = 'fk_notes_project'

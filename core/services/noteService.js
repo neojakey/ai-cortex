@@ -13,6 +13,43 @@ function normalizeCustomTags(customTags) {
     .filter(Boolean);
 }
 
+export const NOTE_STATUSES = ['active', 'archived', 'trash'];
+
+/** Error carrying a machine-readable `code` (and any extra fields) for the API/MCP layers. */
+function codedError(code, message, extra = {}) {
+  return Object.assign(new Error(message), { code }, extra);
+}
+
+function assertValidStatus(status) {
+  if (status !== undefined && !NOTE_STATUSES.includes(status)) {
+    throw codedError('INVALID_ARGUMENT', `Invalid status "${status}". Expected one of: ${NOTE_STATUSES.join(', ')}`);
+  }
+}
+
+/** undefined/null = "no check requested"; otherwise must be a positive integer. */
+function parseExpectedRevision(value) {
+  if (value === undefined || value === null) return undefined;
+  if (!Number.isInteger(value) || value < 1) {
+    throw codedError('INVALID_ARGUMENT', 'expectedRevision must be a positive integer');
+  }
+  return value;
+}
+
+/** Normalize a DATE column value (Date at local midnight) or a date string to YYYY-MM-DD. */
+function toDateOnly(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  }
+  return String(value).slice(0, 10);
+}
+
+function sameSet(a, b) {
+  const setA = new Set(a);
+  return setA.size === new Set(b).size && b.every((x) => setA.has(x));
+}
+
 export class NoteService {
   /**
    * Create a new note
@@ -31,6 +68,7 @@ export class NoteService {
     if (!title || typeof title !== 'string') {
       throw new Error('Note title is required');
     }
+    assertValidStatus(status);
 
     // With an external connection the caller owns the transaction (e.g. vault import),
     // so nothing is committed, rolled back, or released here.
@@ -131,40 +169,129 @@ export class NoteService {
   }
 
   /**
-   * Update an existing note
+   * Update an existing note.
+   *
+   * Runs in one transaction that locks the note row (SELECT ... FOR UPDATE) and makes
+   * every decision from that locked row, never from an earlier read.
+   *
+   * - expectedRevision: if given and not the note's current revision, nothing is
+   *   written and a REVISION_CONFLICT error (carrying `currentRevision`) is thrown.
+   * - appendContent: appended to the locked content, so concurrent appends all
+   *   persist. Mutually exclusive with `content`.
+   * - A write that changes nothing (after normalizing dates, project and tags)
+   *   neither bumps the revision nor snapshots.
+   * The returned note is read inside the transaction, so it is exactly this write
+   * and its `revision` is safe to use as the caller's next expectedRevision.
+   *
+   * @throws {Error} code NOT_FOUND | REVISION_CONFLICT | INVALID_ARGUMENT
    */
   async updateNote(id, {
     title,
     content,
+    appendContent,
     status,
     dueDate,
     properties,
     customTags,
-    project
+    project,
+    expectedRevision
   }) {
-    const existing = await this.getNoteById(id);
-    if (!existing) {
-      throw new Error(`Note not found: ${id}`);
-    }
-
     if (title !== undefined && typeof title !== 'string') {
-      throw new Error('Note title must be a string');
+      throw codedError('INVALID_ARGUMENT', 'Note title must be a string');
     }
-
-    const projectRecord = project !== undefined
-      ? (project ? await projectService.getOrCreateByName(project) : null)
-      : undefined;
+    if (content !== undefined && appendContent !== undefined) {
+      throw codedError('INVALID_ARGUMENT', 'Pass either content or appendContent, not both');
+    }
+    if (appendContent !== undefined && typeof appendContent !== 'string') {
+      throw codedError('INVALID_ARGUMENT', 'appendContent must be a string');
+    }
+    assertValidStatus(status);
+    const expected = parseExpectedRevision(expectedRevision);
 
     const conn = await pool.getConnection();
 
     try {
       await conn.beginTransaction();
 
+      const [lockedRows] = await conn.query(`SELECT * FROM notes WHERE id = ? FOR UPDATE`, [id]);
+      if (!lockedRows.length) {
+        throw codedError('NOT_FOUND', `Note not found: ${id}`);
+      }
+      const existing = lockedRows[0];
+      const existingContent = existing.content || '';
+
+      if (expected !== undefined && expected !== existing.revision) {
+        throw codedError('REVISION_CONFLICT', 'Note changed since you read it.', {
+          currentRevision: existing.revision
+        });
+      }
+
+      // Only now (revision accepted) may we create a project as a side effect.
+      const projectRecord = project !== undefined
+        ? (project ? await projectService.getOrCreateByName(project) : null)
+        : undefined;
+
       const newTitle = title !== undefined ? title.trim() : existing.title;
+      const newContent = appendContent !== undefined
+        ? `${existingContent}\n\n${appendContent}`
+        : (content !== undefined ? content : existingContent);
+      const newStatus = status !== undefined ? status : existing.status;
+      const newDueDate = dueDate !== undefined ? (dueDate || null) : existing.due_date;
+      const newProjectId = projectRecord !== undefined
+        ? (projectRecord ? projectRecord.id : null)
+        : existing.project_id;
+
+      const titleDidChange = newTitle !== existing.title;
+      const contentDidChange = newContent !== existingContent;
+
+      // Tags are derived from content plus explicit tags; only re-sync when either could differ.
+      const syncTags = contentDidChange || customTags !== undefined;
+      const tagsToSync = syncTags
+        ? Array.from(new Set([...extractHashtags(newContent), ...normalizeCustomTags(customTags)])).filter(Boolean)
+        : null;
+
+      // Semantic no-op check: compare normalized values, not raw input.
+      let tagsDidChange = false;
+      if (tagsToSync) {
+        const [tagNameRows] = await conn.query(
+          `SELECT t.name FROM tags t JOIN note_tags nt ON t.id = nt.tag_id WHERE nt.note_id = ?`,
+          [id]
+        );
+        tagsDidChange = !sameSet(tagsToSync, tagNameRows.map((r) => r.name));
+      }
+
+      let propertiesDidChange = false;
+      const hasProperties = properties && typeof properties === 'object' && !Array.isArray(properties);
+      if (hasProperties) {
+        const [propRows] = await conn.query(
+          `SELECT property_name, property_value FROM note_properties WHERE note_id = ?`,
+          [id]
+        );
+        const current = Object.fromEntries(propRows.map((r) => [r.property_name, r.property_value]));
+        propertiesDidChange = Object.entries(properties).some(([name, val]) =>
+          name && current[name] !== (val === null ? undefined : String(val))
+        );
+      }
+
+      const isNoop =
+        !titleDidChange &&
+        !contentDidChange &&
+        newStatus === existing.status &&
+        toDateOnly(newDueDate) === toDateOnly(existing.due_date) &&
+        newProjectId === existing.project_id &&
+        !tagsDidChange &&
+        !propertiesDidChange;
+
+      if (isNoop) {
+        const unchanged = await this.getNoteById(id, conn);
+        await conn.commit();
+        return unchanged;
+      }
+
       let newSlug = existing.slug;
 
       // If title changed, update slug if unique
-      if (title !== undefined && title.trim() !== existing.title) {
+      if (titleDidChange) {
         const baseSlug = slugify(newTitle) || 'untitled';
         let candidateSlug = baseSlug;
         let counter = 1;
@@ -179,44 +306,30 @@ export class NoteService {
         newSlug = candidateSlug;
       }
 
-      const newContent = content !== undefined ? content : existing.content;
-      const newStatus = status !== undefined ? status : existing.status;
-      const newDueDate = dueDate !== undefined ? (dueDate || null) : existing.dueDate;
-      const newProjectId = projectRecord !== undefined
-        ? (projectRecord ? projectRecord.id : null)
-        : (existing.project ? existing.project.id : null);
       const contentText = markdownToPlaintext(newContent);
 
-      // 1. Update note
+      // 1. Update note (and bump its revision)
       await conn.query(
         `UPDATE notes
-         SET title = ?, slug = ?, content = ?, content_text = ?, status = ?, due_date = ?, project_id = ?, updated_at = NOW(3)
+         SET title = ?, slug = ?, content = ?, content_text = ?, status = ?, due_date = ?, project_id = ?,
+             revision = revision + 1, updated_at = NOW(3)
          WHERE id = ?`,
         [newTitle, newSlug, newContent, contentText, newStatus, newDueDate, newProjectId, id]
       );
 
       // 2. Snapshot if content or title changed
-      const contentChanged = content !== undefined && content !== existing.content;
-      const titleChanged = title !== undefined && newTitle !== existing.title;
-      if (contentChanged || titleChanged) {
+      if (contentDidChange || titleDidChange) {
         await conn.query(
           `INSERT INTO note_versions (note_id, title, content) VALUES (?, ?, ?)`,
           [id, newTitle, newContent]
         );
       }
 
-      // 3. Update tags if content or customTags provided
-      if (content !== undefined || customTags !== undefined) {
-        const extractedTags = extractHashtags(newContent);
-        const tagsToSync = Array.from(new Set([
-          ...extractedTags,
-          ...normalizeCustomTags(customTags)
-        ]));
-
+      // 3. Update tags if content changed or explicit tags were provided
+      if (tagsToSync) {
         await conn.query(`DELETE FROM note_tags WHERE note_id = ?`, [id]);
 
         for (const tagName of tagsToSync) {
-          if (!tagName) continue;
           await conn.query(`INSERT IGNORE INTO tags (name) VALUES (?)`, [tagName]);
           const [tagRows] = await conn.query(`SELECT id FROM tags WHERE name = ?`, [tagName]);
           if (tagRows.length) {
@@ -232,7 +345,7 @@ export class NoteService {
       }
 
       // 4. Update Wikilinks if content changed
-      if (content !== undefined) {
+      if (contentDidChange) {
         await conn.query(`DELETE FROM note_links WHERE source_note_id = ?`, [id]);
 
         const links = extractWikilinks(newContent);
@@ -258,7 +371,7 @@ export class NoteService {
       }
 
       // 5. Update Properties if passed
-      if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
+      if (hasProperties) {
         for (const [propName, propVal] of Object.entries(properties)) {
           if (!propName) continue;
           if (propVal === null) {
@@ -278,8 +391,54 @@ export class NoteService {
         }
       }
 
+      const updated = await this.getNoteById(id, conn);
       await conn.commit();
-      return this.getNoteById(id);
+      return updated;
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * Change only a note's status (trash / restore / archive) under the same lock and
+   * revision rules as updateNote, without re-processing tags or links or snapshotting.
+   * @returns {Promise<{id: string, status: string, revision: number}|null>} null if no such note
+   * @throws {Error} code REVISION_CONFLICT | INVALID_ARGUMENT
+   */
+  async setStatus(id, status, { expectedRevision } = {}) {
+    if (status === undefined) throw codedError('INVALID_ARGUMENT', 'status is required');
+    assertValidStatus(status);
+    const expected = parseExpectedRevision(expectedRevision);
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [rows] = await conn.query(`SELECT status, revision FROM notes WHERE id = ? FOR UPDATE`, [id]);
+      if (!rows.length) {
+        await conn.rollback();
+        return null;
+      }
+      const { status: current, revision } = rows[0];
+
+      if (expected !== undefined && expected !== revision) {
+        throw codedError('REVISION_CONFLICT', 'Note changed since you read it.', { currentRevision: revision });
+      }
+
+      if (current === status) {
+        await conn.commit();
+        return { id, status, revision };
+      }
+
+      await conn.query(
+        `UPDATE notes SET status = ?, revision = revision + 1 WHERE id = ?`,
+        [status, id]
+      );
+      await conn.commit();
+      return { id, status, revision: revision + 1 };
     } catch (err) {
       await conn.rollback();
       throw err;
@@ -291,31 +450,31 @@ export class NoteService {
   /**
    * Fetch a single note by ID with backlinks, tags, properties, and attachments
    */
-  async getNoteById(id) {
-    const [notes] = await pool.query(`SELECT * FROM notes WHERE id = ?`, [id]);
+  async getNoteById(id, db = pool) {
+    const [notes] = await db.query(`SELECT * FROM notes WHERE id = ?`, [id]);
     if (!notes.length) return null;
-    return this._formatNoteRecord(notes[0]);
+    return this._formatNoteRecord(notes[0], db);
   }
 
   /**
    * Fetch a single note by Slug
    */
-  async getNoteBySlug(slug) {
-    const [notes] = await pool.query(`SELECT * FROM notes WHERE slug = ?`, [slug]);
+  async getNoteBySlug(slug, db = pool) {
+    const [notes] = await db.query(`SELECT * FROM notes WHERE slug = ?`, [slug]);
     if (!notes.length) return null;
-    return this._formatNoteRecord(notes[0]);
+    return this._formatNoteRecord(notes[0], db);
   }
 
   /**
    * Internal helper to populate note details
    */
-  async _formatNoteRecord(row) {
+  async _formatNoteRecord(row, db = pool) {
     const noteId = row.id;
 
     // 0. Project
     let project = null;
     if (row.project_id) {
-      const [projectRows] = await pool.query(
+      const [projectRows] = await db.query(
         `SELECT id, name, slug FROM projects WHERE id = ?`,
         [row.project_id]
       );
@@ -325,7 +484,7 @@ export class NoteService {
     }
 
     // 1. Tags
-    const [tagRows] = await pool.query(
+    const [tagRows] = await db.query(
       `SELECT t.name FROM tags t
        JOIN note_tags nt ON t.id = nt.tag_id
        WHERE nt.note_id = ?
@@ -335,7 +494,7 @@ export class NoteService {
     const tags = tagRows.map((t) => t.name);
 
     // 2. Notion-style Properties
-    const [propRows] = await pool.query(
+    const [propRows] = await db.query(
       `SELECT property_name, property_type, property_value
        FROM note_properties
        WHERE note_id = ?`,
@@ -353,7 +512,7 @@ export class NoteService {
     }
 
     // 3. Outgoing Links
-    const [outgoingRows] = await pool.query(
+    const [outgoingRows] = await db.query(
       `SELECT nl.target_slug, nl.target_note_id, n.title as target_title
        FROM note_links nl
        LEFT JOIN notes n ON nl.target_note_id = n.id
@@ -362,7 +521,7 @@ export class NoteService {
     );
 
     // 4. Backlinks (Incoming mentions from other notes)
-    const [backlinkRows] = await pool.query(
+    const [backlinkRows] = await db.query(
       `SELECT n.id, n.title, n.slug, n.status, n.updated_at
        FROM note_links nl
        JOIN notes n ON nl.source_note_id = n.id
@@ -375,7 +534,7 @@ export class NoteService {
     );
 
     // 5. Attachments
-    const [attachmentRows] = await pool.query(
+    const [attachmentRows] = await db.query(
       `SELECT id, filename, mime_type, file_size, sha256, storage_path, created_at
        FROM attachments
        WHERE note_id = ?
@@ -385,6 +544,7 @@ export class NoteService {
 
     return {
       id: row.id,
+      revision: row.revision,
       title: row.title,
       slug: row.slug,
       content: row.content || '',
@@ -585,8 +745,7 @@ export class NoteService {
       }
       return res.affectedRows > 0;
     } else {
-      const [res] = await pool.query(`UPDATE notes SET status = 'trash' WHERE id = ?`, [id]);
-      return res.affectedRows > 0;
+      return (await this.setStatus(id, 'trash')) !== null;
     }
   }
 
@@ -594,8 +753,7 @@ export class NoteService {
    * Restore a note from trash
    */
   async restoreNote(id) {
-    const [res] = await pool.query(`UPDATE notes SET status = 'active' WHERE id = ?`, [id]);
-    return res.affectedRows > 0;
+    return (await this.setStatus(id, 'active')) !== null;
   }
 
   /**
@@ -621,26 +779,32 @@ export class NoteService {
    * @throws {Error} code NOT_FOUND (no such note) or TASK_CONFLICT (task moved/ambiguous/gone)
    */
   async toggleTask(noteId, { line, text, completed }) {
-    const note = await this.getNoteById(noteId);
-    if (!note) {
-      const err = new Error(`Note not found: ${noteId}`);
-      err.code = 'NOT_FOUND';
-      throw err;
+    // The write is guarded by the revision we read, so a concurrent edit between our
+    // read and write can't be lost; on conflict we re-read and try again.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const note = await this.getNoteById(noteId);
+      if (!note) throw codedError('NOT_FOUND', `Note not found: ${noteId}`);
+
+      const matches = extractTasks(note.content).filter((t) => t.text === text);
+      const target = matches.find((t) => t.line === line) || (matches.length === 1 ? matches[0] : null);
+      if (!target) {
+        throw codedError('TASK_CONFLICT', 'Task could not be located; the note has changed. Refresh and try again.');
+      }
+
+      if (target.completed === completed) return note;
+
+      const lines = note.content.split('\n');
+      lines[target.line - 1] = lines[target.line - 1].replace(/\[[ xX]\]/, completed ? '[x]' : '[ ]');
+      try {
+        return await this.updateNote(noteId, {
+          content: lines.join('\n'),
+          expectedRevision: note.revision
+        });
+      } catch (err) {
+        if (err.code !== 'REVISION_CONFLICT') throw err;
+      }
     }
-
-    const matches = extractTasks(note.content).filter((t) => t.text === text);
-    const target = matches.find((t) => t.line === line) || (matches.length === 1 ? matches[0] : null);
-    if (!target) {
-      const err = new Error('Task could not be located; the note has changed. Refresh and try again.');
-      err.code = 'TASK_CONFLICT';
-      throw err;
-    }
-
-    if (target.completed === completed) return note;
-
-    const lines = note.content.split('\n');
-    lines[target.line - 1] = lines[target.line - 1].replace(/\[[ xX]\]/, completed ? '[x]' : '[ ]');
-    return this.updateNote(noteId, { content: lines.join('\n') });
+    throw codedError('TASK_CONFLICT', 'The note kept changing; try again.');
   }
 
   /**
@@ -648,13 +812,13 @@ export class NoteService {
    * edit, so the restore itself is snapshotted and can be undone.
    * @returns {Promise<Object|null>} the updated note, or null if the version isn't this note's
    */
-  async restoreVersion(noteId, versionId) {
+  async restoreVersion(noteId, versionId, { expectedRevision } = {}) {
     const [rows] = await pool.query(
       `SELECT title, content FROM note_versions WHERE id = ? AND note_id = ?`,
       [versionId, noteId]
     );
     if (!rows.length) return null;
-    return this.updateNote(noteId, { title: rows[0].title, content: rows[0].content });
+    return this.updateNote(noteId, { title: rows[0].title, content: rows[0].content, expectedRevision });
   }
 
   /**

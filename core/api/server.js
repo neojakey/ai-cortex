@@ -198,10 +198,26 @@ app.post('/api/notes', async (req, res) => {
   }
 });
 
-// Update note
+// Map a noteService error to an HTTP response. `error` stays a human-readable message
+// (clients display it); `code` is the stable machine-readable part.
+function sendServiceError(res, err, fallbackStatus = 400) {
+  if (err.code === 'NOT_FOUND') {
+    return res.status(404).json({ error: err.message, code: err.code });
+  }
+  if (err.code === 'REVISION_CONFLICT') {
+    return res.status(409).json({ error: err.message, code: err.code, currentRevision: err.currentRevision });
+  }
+  if (err.code === 'INVALID_ARGUMENT') {
+    return res.status(400).json({ error: err.message, code: err.code });
+  }
+  return res.status(fallbackStatus).json({ error: err.message });
+}
+
+// Update note. Send `expectedRevision` (the revision you last read) to be refused with
+// 409 instead of overwriting a newer edit.
 app.put('/api/notes/:id', async (req, res) => {
   try {
-    const { title, content, status, dueDate, properties, customTags, project } = req.body;
+    const { title, content, status, dueDate, properties, customTags, project, expectedRevision } = req.body;
     const note = await noteService.updateNote(req.params.id, {
       title,
       content,
@@ -209,11 +225,12 @@ app.put('/api/notes/:id', async (req, res) => {
       dueDate,
       properties,
       customTags,
-      project
+      project,
+      expectedRevision
     });
     res.json({ note });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    sendServiceError(res, err);
   }
 });
 
@@ -256,11 +273,13 @@ app.post('/api/notes/:id/versions/:versionId/restore', async (req, res) => {
     if (!Number.isInteger(versionId) || versionId < 1) {
       return res.status(400).json({ error: 'Invalid version id' });
     }
-    const note = await noteService.restoreVersion(req.params.id, versionId);
+    const note = await noteService.restoreVersion(req.params.id, versionId, {
+      expectedRevision: req.body?.expectedRevision
+    });
     if (!note) return res.status(404).json({ error: 'Version not found for this note' });
     res.json({ note });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServiceError(res, err, 500);
   }
 });
 
