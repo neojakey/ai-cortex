@@ -15,8 +15,10 @@
     "setup:claude-code": "node scripts/install-claude-code.js",
     "setup:desktop": "node scripts/install-desktop-launcher.js",
     "build": "vite build client --outDir ../dist",
+    "pretest": "node scripts/prepare-test-db.js",
     "test": "node --test 'tests/**/*.test.js'",
     "test:unit": "node --test 'tests/unit/**/*.test.js'",
+    "pretest:integration": "node scripts/prepare-test-db.js",
     "test:integration": "node --test 'tests/integration/**/*.test.js'"
   },
   "keywords": [
