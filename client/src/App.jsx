@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar.jsx';
 import NoteEditor from './components/NoteEditor.jsx';
-import KanbanView from './components/KanbanView.jsx';
 import TableView from './components/TableView.jsx';
 import TasksView from './components/TasksView.jsx';
 import SearchPalette from './components/SearchPalette.jsx';
@@ -32,7 +31,7 @@ export default function App() {
   const [notes, setNotes] = useState([]);
   const [activeNoteId, setActiveNoteId] = useState(null);
   const [activeNote, setActiveNote] = useState(null);
-  const [activeView, setActiveView] = useState('document'); // 'document', 'kanban', 'table', 'tasks', 'trash'
+  const [activeView, setActiveView] = useState('document'); // 'document', 'table', 'tasks', 'trash'
   const [tags, setTags] = useState([]);
   const [selectedTag, setSelectedTag] = useState(null);
   const [projects, setProjects] = useState([]);
@@ -369,18 +368,6 @@ export default function App() {
             onRefreshNote={handleRefreshNote}
             onDeleteNote={handleDeleteNote}
             onSelectNote={(id) => setActiveNoteId(id)}
-          />
-        )}
-
-        {activeView === 'kanban' && (
-          <KanbanView
-            notes={notes}
-            onSelectNote={(id) => {
-              setActiveNoteId(id);
-              setActiveView('document');
-            }}
-            onCreateNote={handleCreateNote}
-            onUpdateNote={handleUpdateNote}
           />
         )}
 

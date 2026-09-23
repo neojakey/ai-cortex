@@ -1,6 +1,6 @@
 # 🧠 AI-Cortex
 
-A self-hosted, persistent long-term memory cortex for **Claude**, **Gemini**, and other LLMs. Combines the best of **Notion** (structured properties, databases, Kanban boards) and **Obsidian** (speed, privacy, local ownership, markdown, bidirectional backlinks), backed by **MySQL 8.4** and local hybrid file storage.
+A self-hosted, persistent long-term memory cortex for **Claude**, **Gemini**, and other LLMs. Combines the best of **Notion** (structured properties, database views) and **Obsidian** (speed, privacy, local ownership, markdown, bidirectional backlinks), backed by **MySQL 8.4** and local hybrid file storage.
 
 Designed to connect natively to **Claude Desktop (Claude Pro)** and **Gemini** via the **Model Context Protocol (MCP)** with **zero API keys**.
 
@@ -18,7 +18,6 @@ Designed to connect natively to **Claude Desktop (Claude Pro)** and **Gemini** v
   - Type `[[` in any note to trigger instant autocompletion of existing notes.
   - "Linked Mentions" panel at the bottom of every note displaying all notes that reference it.
 - 📋 **Notion-Style Database Views**:
-  - **Kanban Board**: Drag or transition notes across workflow statuses.
   - **Database Grid**: Sortable, filterable table view with editable statuses.
   - **Global Action Items**: Automatically extracts and aggregates `- [ ]` tasks from every note into a consolidated checklist.
 - 📅 **Daily Journaling**: Jump to or create today's daily note with one keystroke (`Alt + D`).

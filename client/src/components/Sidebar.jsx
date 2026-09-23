@@ -3,7 +3,6 @@ import {
   FileText,
   Calendar,
   CheckSquare,
-  Kanban,
   Table,
   Plus,
   Search,
@@ -153,14 +152,6 @@ export default function Sidebar({
           <Calendar size={15} />
           <span>Today's Journal</span>
           <span className="kbd" style={{ marginLeft: 'auto' }}>Alt D</span>
-        </button>
-
-        <button 
-          className={`nav-item ${activeView === 'kanban' ? 'active' : ''}`}
-          onClick={() => onChangeView('kanban')}
-        >
-          <Kanban size={15} />
-          <span>Kanban Board</span>
         </button>
 
         <button 
