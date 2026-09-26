@@ -20,6 +20,9 @@ import {
   RefreshCw,
   Loader2,
   Camera,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
   AlertCircle
 } from 'lucide-react';
 import { renderNoteMarkdown, WIKILINK_PREFIX } from '../lib/renderMarkdown.js';
@@ -51,15 +54,17 @@ const viewModeStorage = {
 };
 
 function AttachmentThumb({ att }) {
-  const [failed, setFailed] = useState(false);
+  // 0 = resized preview from the server, 1 = the original file, 2 = icon only
+  const [stage, setStage] = useState(0);
   const isImage = (att.mimeType || '').startsWith('image/');
   const isPdf = att.mimeType === 'application/pdf';
-  const src = isImage ? att.url : isPdf ? `/api/attachments/${att.id}/thumb` : null;
+  const thumb = `/api/attachments/${att.id}/thumb`;
+  const src = stage === 0 && (isImage || isPdf) ? thumb : stage === 1 && isImage ? att.url : null;
   return (
     <a className="attachment-card" href={att.url} target="_blank" rel="noreferrer" title={att.filename}>
       <div className="attachment-thumb">
-        {src && !failed ? (
-          <img src={src} alt={att.filename} loading="lazy" onError={() => setFailed(true)} />
+        {src ? (
+          <img key={src} src={src} alt={att.filename} loading="lazy" onError={() => setStage((s) => s + 1)} />
         ) : (
           <Paperclip size={28} />
         )}
@@ -76,7 +81,8 @@ export default function NoteEditor({
   onUpdateNote,
   onRefreshNote,
   onDeleteNote,
-  onSelectNote
+  onSelectNote,
+  onOpenJournal
 }) {
   // Hooks MUST be called unconditionally at the top level
   const [title, setTitle] = useState(note?.title || '');
@@ -124,6 +130,18 @@ export default function NoteEditor({
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const photoInputRef = useRef(null);
+  const isDailyNote = /^Daily: \d{4}-\d{2}-\d{2}$/.test(note?.title || '');
+  const [adjacent, setAdjacent] = useState(null); // nearest daily notes either side, for prev/next
+
+  useEffect(() => {
+    if (!isDailyNote) { setAdjacent(null); return undefined; }
+    let cancelled = false;
+    fetch(`/api/journal/adjacent?date=${note.title.slice('Daily: '.length)}`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setAdjacent(d); })
+      .catch(() => { if (!cancelled) setAdjacent(null); });
+    return () => { cancelled = true; };
+  }, [note?.id, isDailyNote]);
 
   // Sync state when active note changes
   useEffect(() => {
@@ -334,10 +352,17 @@ ${backlinksText}
     }
   };
 
-  const isDailyNote = /^Daily: \d{4}-\d{2}-\d{2}$/.test(note?.title || '');
   const imageAttachments = (note?.attachments || []).filter((a) => (a.mimeType || '').startsWith('image/'));
-  // The cover is skipped when the note text already shows that image inline.
-  const coverImage = imageAttachments.find((a) => !content.includes(a.url)) || null;
+  // On a daily note the photos live in a side panel, so the same images are left out of the
+  // rendered text and out of the attachment grid (the stored markdown is untouched).
+  const readContent = isDailyNote
+    ? imageAttachments
+        .reduce((text, a) => text.split(`![Photo](${a.url})`).join(''), content)
+        .replace(/\n{3,}/g, '\n\n')
+    : content;
+  const gridAttachments = isDailyNote
+    ? (note?.attachments || []).filter((a) => !(a.mimeType || '').startsWith('image/'))
+    : (note?.attachments || []);
 
   const handleFileUpload = (e) => uploadFiles(Array.from(e.target.files || []));
 
@@ -397,6 +422,128 @@ ${backlinksText}
       textarea.setSelectionRange(start + prefix.length, start + prefix.length + (selected || 'text').length);
     }, 10);
   };
+
+  const noteBody = (
+    <>
+        {/* Notion-style Properties Bar */}
+        <div className="properties-bar">
+          <div className="prop-field">
+            <span style={{ fontSize: 12 }}>Status:</span>
+            <select 
+              className="prop-select" 
+              value={status} 
+              onChange={(e) => setStatus(e.target.value)}
+            >
+              <option value="active">Active</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+
+          <div className="prop-field">
+            <Calendar size={13} />
+            <span style={{ fontSize: 12 }}>Due Date:</span>
+            <input 
+              type="date" 
+              className="prop-input" 
+              value={dueDate} 
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </div>
+
+          {note.tags && note.tags.length > 0 && (
+            <div className="prop-field" style={{ marginLeft: 'auto' }}>
+              <Tag size={13} />
+              <div style={{ display: 'flex', gap: 4 }}>
+                {note.tags.map((t) => (
+                  <span key={t} className="badge-tag">#{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {viewMode === 'edit' ? (
+          <>
+            {/* Editorial Quick-Format Ribbon */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 0 6px', borderBottom: '1px solid var(--border-dim)' }}>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12, fontWeight: 700 }} onClick={() => insertMarkdown('**', '**')} title="Bold">
+                B
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12, fontStyle: 'italic' }} onClick={() => insertMarkdown('*', '*')} title="Italic">
+                I
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontWeight: 600 }} onClick={() => insertMarkdown('# ')} title="Heading 1">
+                H1
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontWeight: 600 }} onClick={() => insertMarkdown('## ')} title="Heading 2">
+                H2
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)' }} onClick={() => insertMarkdown('- [ ] ')} title="Checkbox Task">
+                [ ] Task
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => insertMarkdown('> ')} title="Callout Quote">
+                “ Quote
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)' }} onClick={() => insertMarkdown('`', '`')} title="Code">
+                &lt;/&gt;
+              </button>
+              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, color: 'var(--accent-primary)', fontWeight: 600 }} onClick={() => insertMarkdown('[[', ']]')} title="Wikilink">
+                ⇄ [[Link]]
+              </button>
+            </div>
+
+            {/* Note Textarea with Wikilink Autocomplete */}
+            <div style={{ position: 'relative' }}>
+              <textarea
+                ref={textareaRef}
+                className="note-textarea mode-edit"
+                placeholder="Write your thoughts in Markdown... Type [[ to link notes, or #tags to categorize..."
+                value={content}
+                onChange={handleContentChange}
+              />
+
+              {/* Floating Wikilink Popup */}
+              {showWikilinks && (
+                <div className="wikilink-popup" style={{ top: 40, left: 20 }}>
+                  <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-dim)' }}>
+                    Link to existing note:
+                  </div>
+                  {filteredWikilinks.length > 0 ? (
+                    filteredWikilinks.map((target) => (
+                      <div
+                        key={target.id}
+                        className="wikilink-item"
+                        onClick={() => insertWikilink(target.title)}
+                      >
+                        <span>⇄</span>
+                        <span>{target.title}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)' }}>
+                      No matching notes found
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          content.trim() ? (
+            <div
+              className="note-rendered"
+              onClick={handleRenderedClick}
+              dangerouslySetInnerHTML={{ __html: renderNoteMarkdown(readContent) }}
+            />
+          ) : (
+            <div className="note-rendered-empty">
+              Nothing here yet. Switch to Edit to start writing.
+            </div>
+          )
+        )}
+
+    </>
+  );
 
   return (
     <div className="editor-wrapper">
@@ -556,7 +703,39 @@ ${backlinksText}
       )}
 
       {/* Editor Content Area */}
-      <div onDragOver={handleDragOver} onDrop={handleDrop} className={`editor-content-container ${fullWidth ? 'is-full-width' : ''}`}>
+      <div onDragOver={handleDragOver} onDrop={handleDrop} className={`editor-content-container ${fullWidth ? 'is-full-width' : ''} ${isDailyNote ? 'is-daily' : ''}`}>
+        {/* Previous day / back to this month's calendar / next day */}
+        {isDailyNote && (
+          <div className="daily-nav">
+            <button
+              type="button"
+              className="daily-nav-btn"
+              disabled={!adjacent?.prev}
+              onClick={() => adjacent?.prev && onSelectNote(adjacent.prev.noteId)}
+              title={adjacent?.prev ? `Open ${adjacent.prev.date}` : 'No earlier entry'}
+            >
+              <ChevronLeft size={15} /> {adjacent?.prev ? adjacent.prev.date : 'Earlier'}
+            </button>
+            <button
+              type="button"
+              className="daily-nav-btn daily-nav-calendar"
+              onClick={() => onOpenJournal && onOpenJournal(note.title.slice('Daily: '.length, 'Daily: '.length + 7))}
+              title="Back to this month in the journal calendar"
+            >
+              <CalendarDays size={15} /> Calendar
+            </button>
+            <button
+              type="button"
+              className="daily-nav-btn"
+              disabled={!adjacent?.next}
+              onClick={() => adjacent?.next && onSelectNote(adjacent.next.noteId)}
+              title={adjacent?.next ? `Open ${adjacent.next.date}` : 'No later entry'}
+            >
+              {adjacent?.next ? adjacent.next.date : 'Later'} <ChevronRight size={15} />
+            </button>
+          </div>
+        )}
+
         {/* Title Input */}
         <input
           type="text"
@@ -566,24 +745,6 @@ ${backlinksText}
           onChange={(e) => setTitle(e.target.value)}
         />
 
-        {/* Photo of the day: one image per daily note, as a nudge to document the day */}
-        {isDailyNote && (coverImage || imageAttachments.length === 0) && (
-          coverImage ? (
-            <a className="daily-photo" href={coverImage.url} target="_blank" rel="noreferrer" title={coverImage.filename}>
-              <img src={coverImage.url} alt={coverImage.filename} />
-            </a>
-          ) : (
-            <button
-              type="button"
-              className="daily-photo-empty"
-              disabled={isUploading}
-              onClick={() => photoInputRef.current?.click()}
-            >
-              <Camera size={20} />
-              <span>{isUploading ? 'Adding photo…' : 'Add a photo to document today'}</span>
-            </button>
-          )
-        )}
         {isDailyNote && (
           <input
             type="file"
@@ -598,128 +759,36 @@ ${backlinksText}
           />
         )}
 
-        {/* Notion-style Properties Bar */}
-        <div className="properties-bar">
-          <div className="prop-field">
-            <span style={{ fontSize: 12 }}>Status:</span>
-            <select 
-              className="prop-select" 
-              value={status} 
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="active">Active</option>
-              <option value="archived">Archived</option>
-            </select>
-          </div>
-
-          <div className="prop-field">
-            <Calendar size={13} />
-            <span style={{ fontSize: 12 }}>Due Date:</span>
-            <input 
-              type="date" 
-              className="prop-input" 
-              value={dueDate} 
-              onChange={(e) => setDueDate(e.target.value)}
-            />
-          </div>
-
-          {note.tags && note.tags.length > 0 && (
-            <div className="prop-field" style={{ marginLeft: 'auto' }}>
-              <Tag size={13} />
-              <div style={{ display: 'flex', gap: 4 }}>
-                {note.tags.map((t) => (
-                  <span key={t} className="badge-tag">#{t}</span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {viewMode === 'edit' ? (
-          <>
-            {/* Editorial Quick-Format Ribbon */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 0 6px', borderBottom: '1px solid var(--border-dim)' }}>
-              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12, fontWeight: 700 }} onClick={() => insertMarkdown('**', '**')} title="Bold">
-                B
-              </button>
-              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12, fontStyle: 'italic' }} onClick={() => insertMarkdown('*', '*')} title="Italic">
-                I
-              </button>
-              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontWeight: 600 }} onClick={() => insertMarkdown('# ')} title="Heading 1">
-                H1
-              </button>
-              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontWeight: 600 }} onClick={() => insertMarkdown('## ')} title="Heading 2">
-                H2
-              </button>
-              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)' }} onClick={() => insertMarkdown('- [ ] ')} title="Checkbox Task">
-                [ ] Task
-              </button>
-              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => insertMarkdown('> ')} title="Callout Quote">
-                “ Quote
-              </button>
-              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, fontFamily: 'var(--font-mono)' }} onClick={() => insertMarkdown('`', '`')} title="Code">
-                &lt;/&gt;
-              </button>
-              <button type="button" className="footer-btn" style={{ padding: '3px 8px', fontSize: 11, color: 'var(--accent-primary)', fontWeight: 600 }} onClick={() => insertMarkdown('[[', ']]')} title="Wikilink">
-                ⇄ [[Link]]
-              </button>
-            </div>
-
-            {/* Note Textarea with Wikilink Autocomplete */}
-            <div style={{ position: 'relative' }}>
-              <textarea
-                ref={textareaRef}
-                className="note-textarea mode-edit"
-                placeholder="Write your thoughts in Markdown... Type [[ to link notes, or #tags to categorize..."
-                value={content}
-                onChange={handleContentChange}
-              />
-
-              {/* Floating Wikilink Popup */}
-              {showWikilinks && (
-                <div className="wikilink-popup" style={{ top: 40, left: 20 }}>
-                  <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-dim)' }}>
-                    Link to existing note:
-                  </div>
-                  {filteredWikilinks.length > 0 ? (
-                    filteredWikilinks.map((target) => (
-                      <div
-                        key={target.id}
-                        className="wikilink-item"
-                        onClick={() => insertWikilink(target.title)}
-                      >
-                        <span>⇄</span>
-                        <span>{target.title}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)' }}>
-                      No matching notes found
-                    </div>
-                  )}
-                </div>
+        {isDailyNote ? (
+          <div className="daily-split">
+            <div className="daily-text">{noteBody}</div>
+            <aside className="daily-photos">
+              {imageAttachments.length > 0 ? (
+                imageAttachments.map((a) => (
+                  <a key={a.id} className="daily-photo" href={a.url} target="_blank" rel="noreferrer" title={a.filename}>
+                    <img src={a.url} alt={a.filename} />
+                  </a>
+                ))
+              ) : (
+                <button
+                  type="button"
+                  className="daily-photo-empty"
+                  disabled={isUploading}
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  <Camera size={20} />
+                  <span>{isUploading ? 'Adding photo…' : 'Add a photo to document today'}</span>
+                </button>
               )}
-            </div>
-          </>
-        ) : (
-          content.trim() ? (
-            <div
-              className="note-rendered"
-              onClick={handleRenderedClick}
-              dangerouslySetInnerHTML={{ __html: renderNoteMarkdown(content) }}
-            />
-          ) : (
-            <div className="note-rendered-empty">
-              Nothing here yet. Switch to Edit to start writing.
-            </div>
-          )
-        )}
+            </aside>
+          </div>
+        ) : noteBody}
 
         {/* Attachments Section */}
-        {note.attachments && note.attachments.length > 0 && (
+        {gridAttachments.length > 0 && (
           <div style={{ padding: '14px 0', borderTop: '1px solid var(--border-dim)' }}>
             <div className="attachments-header">
-              <span>Attachments ({note.attachments.length})</span>
+              <span>Attachments ({gridAttachments.length})</span>
               <div className="view-mode-toggle" role="group" aria-label="Thumbnail size">
                 {['small', 'medium', 'large'].map((size) => (
                   <button
@@ -734,7 +803,7 @@ ${backlinksText}
               </div>
             </div>
             <div className={`attachment-grid size-${thumbSize}`}>
-              {note.attachments.map((att) => (
+              {gridAttachments.map((att) => (
                 <AttachmentThumb key={att.id} att={att} />
               ))}
             </div>

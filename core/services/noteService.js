@@ -720,6 +720,49 @@ export class NoteService {
   }
 
   /**
+   * All daily notes (title "Daily: YYYY-MM-DD"), oldest first, with the first image and a text
+   * preview: everything the Journal calendar needs in one small response.
+   */
+  async getJournalDays() {
+    const [rows] = await pool.query(
+      `SELECT n.id, n.title, LEFT(n.content_text, 120) AS preview,
+              (SELECT a.id FROM attachments a
+                WHERE a.note_id = n.id AND a.mime_type LIKE 'image/%'
+                ORDER BY a.created_at, a.id LIMIT 1) AS photo_id,
+              (SELECT COUNT(*) FROM attachments a
+                WHERE a.note_id = n.id AND a.mime_type LIKE 'image/%') AS image_count
+       FROM notes n
+       WHERE n.status != 'trash' AND n.title REGEXP '^Daily: [0-9]{4}-[0-9]{2}-[0-9]{2}$'
+       ORDER BY n.title`
+    );
+    return rows.map((r) => ({
+      date: r.title.slice('Daily: '.length),
+      noteId: r.id,
+      preview: r.preview || '',
+      photoId: r.photo_id || null,
+      imageCount: Number(r.image_count)
+    }));
+  }
+
+  /** The closest daily notes before and after a YYYY-MM-DD date (either may be null). */
+  async getAdjacentDaily(dateStr) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr || '')) {
+      throw new Error('date must be YYYY-MM-DD');
+    }
+    const title = `Daily: ${dateStr}`;
+    const pick = async (cmp, order) => {
+      const [rows] = await pool.query(
+        `SELECT id, title FROM notes
+         WHERE status != 'trash' AND title REGEXP '^Daily: [0-9]{4}-[0-9]{2}-[0-9]{2}$' AND title ${cmp} ?
+         ORDER BY title ${order} LIMIT 1`,
+        [title]
+      );
+      return rows.length ? { noteId: rows[0].id, date: rows[0].title.slice('Daily: '.length) } : null;
+    };
+    return { prev: await pick('<', 'DESC'), next: await pick('>', 'ASC') };
+  }
+
+  /**
    * Aggregate all tasks across notes
    */
   async getTasks({ completed = null, limit = 200 } = {}) {

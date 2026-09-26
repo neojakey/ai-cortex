@@ -12,7 +12,8 @@ import {
   Sparkles,
   ChevronDown,
   ChevronRight,
-  Camera
+  Camera,
+  BookOpen
 } from 'lucide-react';
 
 // Collapsed-by-default filter accordion, shared by the Projects and Hashtags
@@ -166,6 +167,14 @@ export default function Sidebar({
             );
           })()}
           <span className="kbd">Alt D</span>
+        </button>
+
+        <button
+          className={`nav-item ${activeView === 'journal' ? 'active' : ''}`}
+          onClick={() => onChangeView('journal')}
+        >
+          <BookOpen size={15} />
+          <span>Journal</span>
         </button>
 
         <button 

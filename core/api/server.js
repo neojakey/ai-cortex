@@ -6,7 +6,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import dotenv from 'dotenv';
 import { pool, checkConnection } from '../db/pool.js';
@@ -176,6 +176,24 @@ app.get('/api/daily', async (req, res) => {
 app.get('/api/daily/status', async (req, res) => {
   try {
     res.json(await noteService.getDailyStatus(req.query.date));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Every daily note as a light record, for the Journal calendar. Sorted by date.
+app.get('/api/journal', async (req, res) => {
+  try {
+    res.json({ days: await noteService.getJournalDays() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The nearest existing daily notes before and after a date, for previous/next-day buttons.
+app.get('/api/journal/adjacent', async (req, res) => {
+  try {
+    res.json(await noteService.getAdjacentDaily(req.query.date));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -409,13 +427,43 @@ app.get('/api/attachments/:id/file', async (req, res) => {
   }
 });
 
-// First-page PNG preview of a PDF attachment, rendered once with pdftoppm and cached on disk.
-// 404 when the file is not a PDF or poppler is unavailable; the client then shows an icon.
+// Preview images for attachments, rendered once and cached on disk:
+//   PDF   -> first page as PNG (pdftoppm)
+//   image -> 480px JPEG, EXIF-rotated (ImageMagick), so a grid of phone photos isn't a grid of
+//            multi-megabyte originals
+// 404 when the type has no preview or the tool is missing; the client then falls back to the
+// original file or an icon.
+const THUMB_WIDTH = 480;
+const magickBin = ['magick', 'convert'].find((bin) => {
+  try { return spawnSync(bin, ['-version'], { timeout: 5000 }).status === 0; } catch { return false; }
+});
+
+// At most a few conversions at once: a calendar of 30 photos would otherwise start 30 processes.
+const MAX_THUMB_JOBS = 3;
+let activeThumbJobs = 0;
+const thumbQueue = [];
+function runThumbJob(job) {
+  return new Promise((resolve, reject) => {
+    const start = () => {
+      activeThumbJobs += 1;
+      job().then(resolve, reject).finally(() => {
+        activeThumbJobs -= 1;
+        const next = thumbQueue.shift();
+        if (next) next();
+      });
+    };
+    if (activeThumbJobs < MAX_THUMB_JOBS) start(); else thumbQueue.push(start);
+  });
+}
+
 app.get('/api/attachments/:id/thumb', async (req, res) => {
   try {
     const attachment = await attachmentService.getAttachmentById(req.params.id);
     if (!attachment) return res.status(404).send('Attachment not found');
-    if (attachment.mimeType !== 'application/pdf') return res.status(404).send('No preview');
+
+    const isPdf = attachment.mimeType === 'application/pdf';
+    const isRaster = /^image\/(jpeg|png|gif|webp)$/.test(attachment.mimeType);
+    if (!isPdf && !(isRaster && magickBin)) return res.status(404).send('No preview');
 
     const source = attachmentService.resolveDiskPath(attachment.storagePath);
     if (!fs.existsSync(source)) return res.status(404).send('File missing on disk');
@@ -423,12 +471,22 @@ app.get('/api/attachments/:id/thumb', async (req, res) => {
     const cacheDir = path.resolve(attachmentService.storageDir, '..', 'thumbs');
     fs.mkdirSync(cacheDir, { recursive: true });
     const base = path.join(cacheDir, `${attachment.sha256}`);
-    const png = `${base}.png`;
-    if (!fs.existsSync(png)) {
-      await execFileAsync('pdftoppm', ['-png', '-f', '1', '-l', '1', '-singlefile', '-scale-to-x', '480', '-scale-to-y', '-1', source, base], { timeout: 20000 });
+    const out = isPdf ? `${base}.png` : `${base}.${THUMB_WIDTH}.jpg`;
+
+    if (!fs.existsSync(out)) {
+      await runThumbJob(async () => {
+        if (fs.existsSync(out)) return;
+        if (isPdf) {
+          await execFileAsync('pdftoppm', ['-png', '-f', '1', '-l', '1', '-singlefile', '-scale-to-x', String(THUMB_WIDTH), '-scale-to-y', '-1', source, base], { timeout: 20000 });
+        } else {
+          const tmp = `${out}.partial.jpg`;
+          await execFileAsync(magickBin, [`${source}[0]`, '-auto-orient', '-thumbnail', `${THUMB_WIDTH}x${THUMB_WIDTH}>`, '-quality', '82', tmp], { timeout: 30000 });
+          fs.renameSync(tmp, out);
+        }
+      });
     }
-    res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000, immutable' });
-    fs.createReadStream(png).pipe(res);
+    res.set({ 'Content-Type': isPdf ? 'image/png' : 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable' });
+    fs.createReadStream(out).pipe(res);
   } catch {
     res.status(404).send('No preview');
   }

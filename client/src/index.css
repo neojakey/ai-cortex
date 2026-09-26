@@ -1303,7 +1303,33 @@ button, input, textarea, select {
   color: var(--text-muted);
 }
 
-/* Photo of the day (daily notes) */
+/* Daily notes: text on the left, the day's photo on the right (stacks when narrow) */
+.editor-content-container.is-daily:not(.is-full-width) { max-width: 1240px; }
+.daily-split {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 28px;
+}
+.daily-text {
+  flex: 3 1 460px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.daily-photos {
+  flex: 1 1 320px;
+  max-width: 480px;
+  min-width: 0;
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
 .daily-photo {
   display: block;
   border-radius: var(--radius-md);
@@ -1314,8 +1340,9 @@ button, input, textarea, select {
 .daily-photo img {
   display: block;
   width: 100%;
-  max-height: 360px;
-  object-fit: cover;
+  height: auto;
+  max-height: calc(100vh - 80px);
+  object-fit: contain;
 }
 .daily-photo-empty {
   display: flex;
@@ -1323,6 +1350,7 @@ button, input, textarea, select {
   justify-content: center;
   gap: 10px;
   width: 100%;
+  min-height: 220px;
   padding: 22px;
   background: transparent;
   border: 2px dashed var(--border-subtle);
@@ -1335,4 +1363,159 @@ button, input, textarea, select {
 .daily-photo-empty:hover:not(:disabled) {
   border-color: var(--accent-primary);
   color: var(--text-main);
+}
+
+/* Previous / next day on daily notes */
+.daily-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.daily-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.daily-nav-btn:hover:not(:disabled) {
+  border-color: var(--border-focus);
+  color: var(--text-main);
+}
+.daily-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Journal calendar */
+.journal-view {
+  max-width: 1040px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 32px 80px;
+}
+.journal-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.journal-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.journal-stats {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.journal-stats-total { opacity: 0.8; }
+.journal-empty {
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.journal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.journal-weekday {
+  padding: 4px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.journal-cell {
+  position: relative;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-dim);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font: inherit;
+}
+.journal-cell.is-blank { border: none; background: transparent; }
+.journal-cell.is-empty {
+  background: transparent;
+  border-style: dashed;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.journal-cell.is-empty:disabled { cursor: default; opacity: 0.5; }
+.journal-cell.is-empty .journal-add {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+.journal-cell.is-empty:hover:not(:disabled) .journal-add { opacity: 0.7; }
+.journal-cell.has-entry {
+  cursor: pointer;
+  transition: border-color var(--transition-fast), transform var(--transition-fast);
+}
+.journal-cell.has-entry:hover {
+  border-color: var(--border-focus);
+  transform: translateY(-1px);
+}
+.journal-cell.is-today { outline: 2px solid var(--accent-primary); outline-offset: -1px; }
+.journal-cell img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.journal-day {
+  position: absolute;
+  top: 5px;
+  left: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  z-index: 1;
+}
+.journal-cell.has-photo .journal-day {
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+}
+.journal-snippet {
+  position: absolute;
+  inset: 24px 6px 6px;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+}
+.journal-multi {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  font-size: 10.5px;
 }

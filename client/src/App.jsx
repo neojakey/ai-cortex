@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar.jsx';
 import NoteEditor from './components/NoteEditor.jsx';
 import TableView from './components/TableView.jsx';
 import TasksView from './components/TasksView.jsx';
+import JournalView from './components/JournalView.jsx';
 import SearchPalette from './components/SearchPalette.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import { Trash2, RotateCcw, XCircle } from 'lucide-react';
@@ -33,6 +34,7 @@ export default function App() {
   const [notes, setNotes] = useState([]);
   const [activeNoteId, setActiveNoteId] = useState(() => parseHash(window.location.hash).noteId);
   const [activeNote, setActiveNote] = useState(null);
+  const [journalMonth, setJournalMonth] = useState(() => parseHash(window.location.hash).month || null); // 'YYYY-MM' or null = this month
   const [activeView, setActiveView] = useState(() => parseHash(window.location.hash).view); // 'document', 'table', 'tasks', 'trash'
   const [tags, setTags] = useState([]);
   const [selectedTag, setSelectedTag] = useState(null);
@@ -135,19 +137,22 @@ export default function App() {
 
   // Keep the URL hash in step with the view/note so Back and Forward work.
   useEffect(() => {
-    const wanted = formatHash(activeView, activeNoteId);
+    const wanted = formatHash(activeView, activeNoteId, journalMonth);
     const current = window.location.hash || '#/';
     if (current === wanted) return;
-    // The first automatic selection replaces the empty URL instead of adding a history entry.
-    if (!window.location.hash) window.history.replaceState(null, '', wanted);
+    // The first automatic selection replaces the empty URL instead of adding a history entry,
+    // and so does paging between months in the journal (Back should leave it, not undo each month).
+    const monthPaging = current.startsWith('#/journal') && wanted.startsWith('#/journal');
+    if (!window.location.hash || monthPaging) window.history.replaceState(null, '', wanted);
     else window.location.hash = wanted;
-  }, [activeView, activeNoteId]);
+  }, [activeView, activeNoteId, journalMonth]);
 
   useEffect(() => {
     const onHashChange = () => {
-      const { view, noteId } = parseHash(window.location.hash);
+      const { view, noteId, month } = parseHash(window.location.hash);
       setActiveView(view);
       if (noteId) setActiveNoteId(noteId);
+      if (view === 'journal') setJournalMonth(month || null);
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
@@ -366,7 +371,10 @@ export default function App() {
         onOpenDaily={handleOpenDaily}
         dailyStatus={dailyStatus}
         activeView={activeView}
-        onChangeView={setActiveView}
+        onChangeView={(view) => {
+          if (view === 'journal') setJournalMonth(null); // the sidebar item opens the current month
+          setActiveView(view);
+        }}
         onOpenSearch={() => setIsSearchOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         tags={tags}
@@ -403,6 +411,22 @@ export default function App() {
             onRefreshNote={handleRefreshNote}
             onDeleteNote={handleDeleteNote}
             onSelectNote={(id) => setActiveNoteId(id)}
+            onOpenJournal={(month) => {
+              setJournalMonth(month);
+              setActiveView('journal');
+            }}
+          />
+        )}
+
+        {activeView === 'journal' && (
+          <JournalView
+            month={journalMonth}
+            onMonthChange={setJournalMonth}
+            onSelectNote={(id) => {
+              setActiveNoteId(id);
+              setActiveView('document');
+              fetchData();
+            }}
           />
         )}
 
