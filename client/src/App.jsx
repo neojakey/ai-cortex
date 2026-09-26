@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { parseHash, formatHash } from './lib/route.js';
+import { localDateString } from './lib/dates.js';
 import Sidebar from './components/Sidebar.jsx';
 import NoteEditor from './components/NoteEditor.jsx';
 import TableView from './components/TableView.jsx';
@@ -38,6 +39,7 @@ export default function App() {
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [health, setHealth] = useState(null);
+  const [dailyStatus, setDailyStatus] = useState(null);
 
   // Draggable sidebar width, persisted across sessions like the theme prefs.
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -175,6 +177,12 @@ export default function App() {
       setProjects(projectsData.projects || []);
       setHealth(healthData);
 
+      // Passive check for the sidebar's photo-of-the-day indicator (never creates the note)
+      try {
+        const dailyRes = await fetch(`/api/daily/status?date=${localDateString()}`);
+        if (dailyRes.ok) setDailyStatus(await dailyRes.json());
+      } catch { /* indicator is optional */ }
+
       // Default select first note if none selected
       setActiveNoteId((cur) => cur || (notesData.notes && notesData.notes[0]?.id) || null);
     } catch (err) {
@@ -234,8 +242,7 @@ export default function App() {
   // Jump to or create today's daily note
   const handleOpenDaily = useCallback(async () => {
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const res = await fetch(`/api/daily?date=${today}`);
+      const res = await fetch(`/api/daily?date=${localDateString()}`);
       const data = await res.json();
       if (data.note) {
         await fetchData();
@@ -357,6 +364,7 @@ export default function App() {
         }}
         onCreateNote={handleCreateNote}
         onOpenDaily={handleOpenDaily}
+        dailyStatus={dailyStatus}
         activeView={activeView}
         onChangeView={setActiveView}
         onOpenSearch={() => setIsSearchOpen(true)}

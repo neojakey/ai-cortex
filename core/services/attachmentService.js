@@ -35,9 +35,11 @@ export class AttachmentService {
    * @param {string} param0.filename
    * @param {string} param0.mimeType
    * @param {Buffer} param0.buffer
+   * @param {string} [param0.id] pre-chosen attachment id (so a note's text can link to it before it exists)
+   * @param {Object} [param0.conn] connection to insert on, when the caller owns a transaction
    * @returns {Promise<Object>} saved attachment record
    */
-  async saveAttachment({ noteId = null, filename, mimeType, buffer }) {
+  async saveAttachment({ noteId = null, filename, mimeType, buffer, id = null, conn = pool }) {
     if (!buffer || !Buffer.isBuffer(buffer)) {
       throw new Error('Valid file buffer is required');
     }
@@ -54,10 +56,10 @@ export class AttachmentService {
       await fs.promises.writeFile(absolutePath, buffer);
     }
 
-    const attachmentId = crypto.randomUUID();
+    const attachmentId = id || crypto.randomUUID();
     const fileSize = buffer.length;
 
-    await pool.query(
+    await conn.query(
       `INSERT INTO attachments (id, note_id, filename, mime_type, file_size, sha256, storage_path)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [attachmentId, noteId, filename, mimeType || 'application/octet-stream', fileSize, sha256, relativePath]

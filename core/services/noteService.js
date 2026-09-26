@@ -700,6 +700,26 @@ export class NoteService {
   }
 
   /**
+   * Whether a daily note exists for a YYYY-MM-DD date and how many images it has.
+   * Read-only: unlike getOrCreateDailyNote it never creates the note.
+   */
+  async getDailyStatus(dateStr) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr || '')) {
+      throw new Error('date must be YYYY-MM-DD');
+    }
+    const [rows] = await pool.query(
+      `SELECT n.id,
+              (SELECT COUNT(*) FROM attachments a
+                WHERE a.note_id = n.id AND a.mime_type LIKE 'image/%') AS image_count
+       FROM notes n
+       WHERE n.slug = ? AND n.status != 'trash'`,
+      [slugify(`Daily: ${dateStr}`)]
+    );
+    if (!rows.length) return { exists: false, noteId: null, imageCount: 0 };
+    return { exists: true, noteId: rows[0].id, imageCount: Number(rows[0].image_count) };
+  }
+
+  /**
    * Aggregate all tasks across notes
    */
   async getTasks({ completed = null, limit = 200 } = {}) {

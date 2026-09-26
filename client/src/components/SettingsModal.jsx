@@ -17,7 +17,11 @@ import {
   Sun,
   Moon,
   Laptop,
-  Palette
+  Palette,
+  Trash2,
+  AlertTriangle,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 
 import ThemePalettePicker from './ThemePalettePicker.jsx';
@@ -44,6 +48,107 @@ export default function SettingsModal({
   const [autoInstallGeminiStatus, setAutoInstallGeminiStatus] = useState(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+
+  const [backups, setBackups] = useState([]);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [backupError, setBackupError] = useState(null);
+  const [backupInfo, setBackupInfo] = useState(null);
+  const [restoreTarget, setRestoreTarget] = useState(null); // { kind: 'file'|'existing', file?, filename?, label }
+  const [restoreConfirmText, setRestoreConfirmText] = useState('');
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreResult, setRestoreResult] = useState(null);
+  const dbName = health?.db?.database || 'ai_cortex';
+
+  const refreshBackups = () => {
+    fetch('/api/admin/backups')
+      .then((r) => r.json())
+      .then((d) => setBackups(d.backups || []))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (isOpen) refreshBackups();
+  }, [isOpen]);
+
+  const handleCreateBackup = async () => {
+    setIsBackingUp(true);
+    setBackupError(null);
+    setBackupInfo(null);
+    try {
+      const res = await fetch('/api/admin/backup', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Backup failed');
+      // Also hand the file to the browser as a download, same file already saved server-side.
+      const a = document.createElement('a');
+      a.href = `/api/admin/backups/${encodeURIComponent(data.backup.filename)}/download`;
+      a.download = data.backup.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      const att = data.backup.attachments;
+      if (data.backup.attachmentsError) {
+        setBackupError(`Database backed up, but attachment files were not: ${data.backup.attachmentsError}`);
+      } else if (att) {
+        setBackupInfo(`Database backed up. Attachment files: ${att.copied} new copied, ${att.total} in total.`);
+      }
+      refreshBackups();
+    } catch (err) {
+      setBackupError(err.message);
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleDeleteBackup = async (filename) => {
+    await fetch(`/api/admin/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+    refreshBackups();
+  };
+
+  const openRestoreConfirm = (target) => {
+    setRestoreTarget(target);
+    setRestoreConfirmText('');
+    setRestoreResult(null);
+  };
+
+  const handleRestore = async () => {
+    if (!restoreTarget || restoreConfirmText !== dbName) return;
+    setIsRestoring(true);
+    setRestoreResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('confirm', restoreConfirmText);
+      if (restoreTarget.kind === 'file') {
+        formData.append('dump', restoreTarget.file);
+      } else {
+        formData.append('filename', restoreTarget.filename);
+      }
+      const res = await fetch('/api/admin/restore', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Restore failed');
+      const att = data.attachments;
+      let attNote = '';
+      if (att && !att.error) {
+        if (att.restored) attNote = ` ${att.restored} missing attachment file(s) were copied back.`;
+        if (att.stillMissing) attNote += ` ${att.stillMissing} attachment file(s) are still missing and could not be recovered.`;
+      } else if (att && att.error) {
+        attNote = ` Attachment check failed: ${att.error}`;
+      }
+      setRestoreResult({ ok: !(att && (att.stillMissing || att.error)), message: `Restored. A safety backup of the previous data was saved as ${data.safetyBackup}.${attNote}` });
+      setRestoreTarget(null);
+      refreshBackups();
+      onRefreshData();
+    } catch (err) {
+      setRestoreResult({ ok: false, message: err.message });
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  const formatBytes = (n) => {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -470,7 +575,168 @@ export default function SettingsModal({
                   </div>
                 </div>
               </div>
+
+              {/* Backup & Restore */}
+              <div style={{ marginTop: 8 }}>
+                <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)', marginBottom: 6 }}>
+                  Backup & Restore
+                </h4>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
+                  A backup is a full dump of the <code>{dbName}</code> database (every note, tag, project and link). Attachment files are
+                  copied to a backup folder alongside it, only the new ones each time. Restoring replaces everything currently in the database;
+                  a safety copy of what was there is always taken first, and any attachment file that has gone missing is copied back.
+                </p>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <button className="btn-primary" onClick={handleCreateBackup} disabled={isBackingUp}>
+                    {isBackingUp ? <Loader2 size={15} className="spin" /> : <Download size={15} />}
+                    <span>{isBackingUp ? 'Backing up…' : 'Backup Now'}</span>
+                  </button>
+                  <label className="search-trigger-btn" style={{ cursor: isRestoring ? 'default' : 'pointer', opacity: isRestoring ? 0.6 : 1 }}>
+                    <Upload size={15} />
+                    <span>Restore from file…</span>
+                    <input
+                      type="file"
+                      accept=".sql,.gz,.sql.gz"
+                      style={{ display: 'none' }}
+                      disabled={isRestoring}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (file) openRestoreConfirm({ kind: 'file', file, label: file.name });
+                      }}
+                    />
+                  </label>
+                  <a href="/api/admin/attachments.zip" download className="search-trigger-btn" style={{ textDecoration: 'none' }}>
+                    <Download size={15} />
+                    <span>Download attachments (.zip)</span>
+                  </a>
+                </div>
+                {backupError && (
+                  <div style={{ fontSize: 12.5, color: 'var(--accent-rose)', marginBottom: 10 }}>{backupError}</div>
+                )}
+                {backupInfo && (
+                  <div style={{ fontSize: 12.5, color: 'var(--accent-emerald)', marginBottom: 10 }}>{backupInfo}</div>
+                )}
+
+                {restoreResult && (
+                  <div style={{
+                    fontSize: 12.5,
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    marginBottom: 12,
+                    background: restoreResult.ok ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)',
+                    color: restoreResult.ok ? 'var(--accent-emerald)' : 'var(--accent-rose)'
+                  }}>
+                    {restoreResult.message}
+                  </div>
+                )}
+
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>
+                  Saved backups ({backups.length})
+                </div>
+                {backups.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>None yet — click Backup Now.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+                    {backups.map((b) => (
+                      <div key={b.filename} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '8px 10px',
+                        background: 'var(--bg-app)',
+                        border: '1px solid var(--border-dim)',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: 12.5
+                      }}>
+                        <Database size={14} color="var(--text-muted)" />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {new Date(b.createdAt).toLocaleString()}
+                            {b.kind === 'pre-restore' && (
+                              <span style={{ marginLeft: 8, color: 'var(--accent-amber)' }}>auto (pre-restore)</span>
+                            )}
+                          </div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{formatBytes(b.size)}</div>
+                        </div>
+                        <a
+                          href={`/api/admin/backups/${encodeURIComponent(b.filename)}/download`}
+                          download
+                          className="btn-icon"
+                          title="Download"
+                        >
+                          <Download size={14} />
+                        </a>
+                        <button
+                          className="btn-icon"
+                          title="Restore this backup"
+                          disabled={isRestoring}
+                          onClick={() => openRestoreConfirm({ kind: 'existing', filename: b.filename, label: new Date(b.createdAt).toLocaleString() })}
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                        <button className="btn-icon" title="Delete" onClick={() => handleDeleteBackup(b.filename)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
+          )}
+
+          {/* Restore confirmation */}
+          {restoreTarget && (
+            <div className="modal-overlay" style={{ zIndex: 10001 }} onClick={() => !isRestoring && setRestoreTarget(null)}>
+              <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ padding: 24 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <AlertTriangle size={20} color="var(--accent-rose)" />
+                    <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Restore database?</h4>
+                  </div>
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 8 }}>
+                    This replaces every note, tag and link currently in <strong>{dbName}</strong> with the contents of{' '}
+                    <strong>{restoreTarget.label}</strong>. A safety backup of the current data is taken automatically first, but anything created after that safety backup will be lost.
+                  </p>
+                  <p style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    Type <strong>{dbName}</strong> to confirm:
+                  </p>
+                  <input
+                    type="text"
+                    value={restoreConfirmText}
+                    onChange={(e) => setRestoreConfirmText(e.target.value)}
+                    placeholder={dbName}
+                    autoFocus
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      marginBottom: 16,
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-dim)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: 'var(--text-main)',
+                      fontSize: 13
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                    <button className="search-trigger-btn" onClick={() => setRestoreTarget(null)} disabled={isRestoring}>
+                      Cancel
+                    </button>
+                    <button
+                      className="btn-primary"
+                      style={{ background: 'var(--accent-rose)' }}
+                      disabled={restoreConfirmText !== dbName || isRestoring}
+                      onClick={handleRestore}
+                    >
+                      {isRestoring ? <Loader2 size={15} className="spin" /> : <AlertTriangle size={15} />}
+                      <span>{isRestoring ? 'Restoring…' : 'Restore & overwrite'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* TAB 3: Obsidian Vault Import / Export */}

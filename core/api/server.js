@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
+import archiver from 'archiver';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -14,6 +15,7 @@ import { searchService } from '../services/searchService.js';
 import { attachmentService } from '../services/attachmentService.js';
 import { exportService } from '../services/exportService.js';
 import { projectService } from '../services/projectService.js';
+import { backupService } from '../services/backupService.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -168,6 +170,14 @@ app.get('/api/daily', async (req, res) => {
     res.json({ note });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/daily/status', async (req, res) => {
+  try {
+    res.json(await noteService.getDailyStatus(req.query.date));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
@@ -459,6 +469,102 @@ app.post('/api/vault/import', upload.single('vaultZip'), async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+/* =========================================================================
+   5b. Database Backup & Restore
+   ========================================================================= */
+const restoreUpload = multer({
+  storage: multer.diskStorage({
+    destination: os.tmpdir(),
+    filename: (req, file, cb) => cb(null, `ai-cortex-restore-${Date.now()}-${Math.round(Math.random() * 1e9)}`)
+  }),
+  limits: { fileSize: (parseInt(process.env.RESTORE_MAX_MB || '500', 10)) * 1024 * 1024 }
+});
+
+app.post('/api/admin/backup', async (req, res) => {
+  try {
+    const meta = await backupService.createBackup();
+    res.json({ backup: meta });
+  } catch (err) {
+    console.error('[backup] failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Every attachment file as one zip, for an off-machine copy. Photos don't compress, so store as-is.
+app.get('/api/admin/attachments.zip', (req, res) => {
+  const dir = attachmentService.storageDir;
+  res.set({
+    'Content-Type': 'application/zip',
+    'Content-Disposition': `attachment; filename="ai-cortex-attachments-${new Date().toISOString().slice(0, 10)}.zip"`
+  });
+  const archive = archiver('zip', { store: true });
+  archive.on('error', (err) => {
+    console.error('[backup] attachments zip failed:', err);
+    res.destroy(err);
+  });
+  archive.pipe(res);
+  archive.glob('*', { cwd: dir, dot: false });
+  archive.finalize();
+});
+
+app.get('/api/admin/backups', async (req, res) => {
+  try {
+    res.json({ backups: await backupService.listBackups() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/backups/:filename/download', (req, res) => {
+  const filePath = backupService.resolveBackupPath(req.params.filename);
+  if (!filePath || !fs.existsSync(filePath)) return res.status(404).send('Backup not found');
+  res.download(filePath, req.params.filename);
+});
+
+app.delete('/api/admin/backups/:filename', async (req, res) => {
+  try {
+    const ok = await backupService.deleteBackup(req.params.filename);
+    if (!ok) return res.status(404).json({ error: 'Backup not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Restore from an uploaded dump, or from an existing server-side backup by filename.
+// Requires `confirm` to equal the live database name, as a deliberate speed bump against
+// an accidental click — restore overwrites every note.
+app.post('/api/admin/restore', restoreUpload.single('dump'), async (req, res) => {
+  const cleanupTmp = () => { if (req.file) fs.unlink(req.file.path, () => {}); };
+  try {
+    const expected = process.env.DB_NAME || 'ai_cortex';
+    if (req.body.confirm !== expected) {
+      cleanupTmp();
+      return res.status(400).json({ error: `Type "${expected}" to confirm the restore.` });
+    }
+
+    let sourcePath;
+    if (req.file) {
+      sourcePath = req.file.path;
+    } else if (req.body.filename) {
+      sourcePath = backupService.resolveBackupPath(req.body.filename);
+      if (!sourcePath || !fs.existsSync(sourcePath)) {
+        return res.status(404).json({ error: 'Backup not found' });
+      }
+    } else {
+      return res.status(400).json({ error: 'No file uploaded and no filename given' });
+    }
+
+    const result = await backupService.restoreFrom(sourcePath);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[restore] failed:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    cleanupTmp();
   }
 });
 

@@ -11,7 +11,8 @@ import {
   Tag,
   Sparkles,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Camera
 } from 'lucide-react';
 
 // Collapsed-by-default filter accordion, shared by the Projects and Hashtags
@@ -86,6 +87,7 @@ export default function Sidebar({
   onSelectNote,
   onCreateNote,
   onOpenDaily,
+  dailyStatus,
   activeView,
   onChangeView,
   onOpenSearch,
@@ -151,7 +153,19 @@ export default function Sidebar({
         >
           <Calendar size={15} />
           <span>Today's Journal</span>
-          <span className="kbd" style={{ marginLeft: 'auto' }}>Alt D</span>
+          {(() => {
+            const done = !!dailyStatus && dailyStatus.imageCount > 0;
+            return (
+              <span
+                className="daily-photo-indicator"
+                title={done ? "Today's photo is added" : "No photo yet today: add one to document the day"}
+                style={{ marginLeft: 'auto', display: 'inline-flex', color: done ? 'var(--accent-emerald)' : 'var(--accent-amber)' }}
+              >
+                <Camera size={13} />
+              </span>
+            );
+          })()}
+          <span className="kbd">Alt D</span>
         </button>
 
         <button 

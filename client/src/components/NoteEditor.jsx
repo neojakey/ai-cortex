@@ -19,6 +19,7 @@ import {
   Save,
   RefreshCw,
   Loader2,
+  Camera,
   AlertCircle
 } from 'lucide-react';
 import { renderNoteMarkdown, WIKILINK_PREFIX } from '../lib/renderMarkdown.js';
@@ -122,6 +123,7 @@ export default function NoteEditor({
   const [wikilinkCursorPos, setWikilinkCursorPos] = useState(null);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
+  const photoInputRef = useRef(null);
 
   // Sync state when active note changes
   useEffect(() => {
@@ -293,10 +295,13 @@ ${backlinksText}
   };
 
   // Upload one or more files in order, then add all their links to the note in one save.
-  const uploadFiles = async (files) => {
+  // With embed: false the files are only attached (shown as the cover / thumbnails), and the
+  // note text is left untouched.
+  const uploadFiles = async (files, { embed = true } = {}) => {
     if (!files.length) return;
     setIsUploading(true);
     let links = '';
+    let uploaded = 0;
     const failed = [];
     try {
       for (const file of files) {
@@ -307,7 +312,8 @@ ${backlinksText}
           const res = await fetch('/api/attachments', { method: 'POST', body: formData });
           if (!res.ok) throw new Error('Upload failed');
           const { attachment } = await res.json();
-          links += file.type.startsWith('image/')
+          uploaded += 1;
+          if (embed) links += file.type.startsWith('image/')
             ? `\n\n![${attachment.filename}](${attachment.url})\n`
             : `\n\n[📎 ${attachment.filename}](${attachment.url})\n`;
         } catch {
@@ -318,6 +324,8 @@ ${backlinksText}
         const updatedContent = content + links;
         setContent(updatedContent);
         await onUpdateNote(note.id, { content: updatedContent });
+      } else if (uploaded) {
+        await onRefreshNote(note.id);
       }
       if (failed.length) alert(`Could not attach: ${failed.join(', ')}`);
     } finally {
@@ -325,6 +333,11 @@ ${backlinksText}
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
+
+  const isDailyNote = /^Daily: \d{4}-\d{2}-\d{2}$/.test(note?.title || '');
+  const imageAttachments = (note?.attachments || []).filter((a) => (a.mimeType || '').startsWith('image/'));
+  // The cover is skipped when the note text already shows that image inline.
+  const coverImage = imageAttachments.find((a) => !content.includes(a.url)) || null;
 
   const handleFileUpload = (e) => uploadFiles(Array.from(e.target.files || []));
 
@@ -552,6 +565,38 @@ ${backlinksText}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
+
+        {/* Photo of the day: one image per daily note, as a nudge to document the day */}
+        {isDailyNote && (coverImage || imageAttachments.length === 0) && (
+          coverImage ? (
+            <a className="daily-photo" href={coverImage.url} target="_blank" rel="noreferrer" title={coverImage.filename}>
+              <img src={coverImage.url} alt={coverImage.filename} />
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="daily-photo-empty"
+              disabled={isUploading}
+              onClick={() => photoInputRef.current?.click()}
+            >
+              <Camera size={20} />
+              <span>{isUploading ? 'Adding photo…' : 'Add a photo to document today'}</span>
+            </button>
+          )
+        )}
+        {isDailyNote && (
+          <input
+            type="file"
+            accept="image/*"
+            ref={photoInputRef}
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) uploadFiles([file], { embed: false });
+            }}
+          />
+        )}
 
         {/* Notion-style Properties Bar */}
         <div className="properties-bar">
