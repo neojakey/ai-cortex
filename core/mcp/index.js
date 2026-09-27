@@ -105,7 +105,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'ai_cortex_update_note',
-        description: 'Update or append content to an existing note in AI-Cortex. Always pass `expectedRevision` (the `revision` from your last read of the note): if the note has changed since, the update is refused with REVISION_CONFLICT and you must re-read, merge your change, and retry.',
+        description: 'Update or append content to an existing note in AI-Cortex. Overwriting content (append not set) requires `expectedRevision` (the `revision` from your last read of the note) and is refused otherwise; a stale revision is refused with REVISION_CONFLICT and you must re-read, merge your change, and retry. Appending never needs it, since concurrent appends all persist.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -127,7 +127,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             expectedRevision: {
               type: 'integer',
-              description: 'The `revision` you got when you last read this note. The update is refused if the note has changed since. Strongly recommended.'
+              description: 'The `revision` you got when you last read this note. Required unless append is true: an overwrite without it is refused. A stale value is also refused, with the current revision.'
             }
           },
           required: ['idOrTitle', 'content']
@@ -265,10 +265,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
-        // Append is applied by the service under the row lock, so concurrent appends all persist.
+        // Append is applied by the service under the row lock, so concurrent appends all
+        // persist and never need a revision check; an overwrite does, and the service
+        // enforces that (requireRevision) rather than us just warning about it.
         const updatePayload = args.append
           ? { appendContent: args.content }
-          : { content: args.content };
+          : { content: args.content, requireRevision: true };
         if (args.project !== undefined) updatePayload.project = args.project;
         const checked = args.expectedRevision !== undefined && args.expectedRevision !== null;
         if (checked) updatePayload.expectedRevision = args.expectedRevision;
@@ -287,6 +289,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     message: `This note changed since you read it (it is now at revision ${err.currentRevision}). ` +
                       'Re-read the note, merge your change into the latest content, and retry with the new revision as expectedRevision.',
                     currentRevision: err.currentRevision
+                  }, null, 2)
+                }
+              ],
+              isError: true
+            };
+          }
+          if (err.code === 'EXPECTED_REVISION_REQUIRED') {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    error: 'EXPECTED_REVISION_REQUIRED',
+                    message: 'Overwriting a note requires expectedRevision. Read the note first and pass its ' +
+                      '`revision`, or set append: true if you only need to add to it.'
                   }, null, 2)
                 }
               ],

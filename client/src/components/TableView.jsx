@@ -93,7 +93,7 @@ export default function TableView({
                   className="prop-select"
                   value={n.status || 'active'}
                   onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => onUpdateNote(n.id, { status: e.target.value })}
+                  onChange={(e) => onUpdateNote(n.id, { status: e.target.value, expectedRevision: n.revision })}
                 >
                   <option value="active">Active</option>
                   <option value="archived">Archived</option>

@@ -309,7 +309,7 @@ ${backlinksText}
     setShowWikilinks(false);
 
     // Trigger update
-    onUpdateNote(note.id, { content: newContent });
+    onUpdateNote(note.id, { content: newContent, expectedRevision: note.revision });
   };
 
   // Upload one or more files in order, then add all their links to the note in one save.
@@ -341,7 +341,7 @@ ${backlinksText}
       if (links) {
         const updatedContent = content + links;
         setContent(updatedContent);
-        await onUpdateNote(note.id, { content: updatedContent });
+        await onUpdateNote(note.id, { content: updatedContent, expectedRevision: note.revision });
       } else if (uploaded) {
         await onRefreshNote(note.id);
       }
@@ -416,7 +416,7 @@ ${backlinksText}
     const replacement = `${prefix}${selected || 'text'}${suffix}`;
     const newContent = content.substring(0, start) + replacement + content.substring(end);
     setContent(newContent);
-    onUpdateNote(note.id, { content: newContent });
+    onUpdateNote(note.id, { content: newContent, expectedRevision: note.revision });
     setTimeout(() => {
       textarea.focus();
       textarea.setSelectionRange(start + prefix.length, start + prefix.length + (selected || 'text').length);

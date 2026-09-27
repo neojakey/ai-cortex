@@ -182,7 +182,11 @@ export class NoteService {
    * The returned note is read inside the transaction, so it is exactly this write
    * and its `revision` is safe to use as the caller's next expectedRevision.
    *
-   * @throws {Error} code NOT_FOUND | REVISION_CONFLICT | INVALID_ARGUMENT
+   * @param {boolean} [requireRevision] - If true, a replacement write (anything but a
+   *   pure appendContent) without expectedRevision is refused before touching the DB.
+   *   Off by default for internal/trusted callers; REST and MCP turn it on for their
+   *   external replace paths so two writers can no longer silently clobber each other.
+   * @throws {Error} code NOT_FOUND | REVISION_CONFLICT | INVALID_ARGUMENT | EXPECTED_REVISION_REQUIRED
    */
   async updateNote(id, {
     title,
@@ -193,7 +197,8 @@ export class NoteService {
     properties,
     customTags,
     project,
-    expectedRevision
+    expectedRevision,
+    requireRevision = false
   }) {
     if (title !== undefined && typeof title !== 'string') {
       throw codedError('INVALID_ARGUMENT', 'Note title must be a string');
@@ -218,6 +223,16 @@ export class NoteService {
       }
       const existing = lockedRows[0];
       const existingContent = existing.content || '';
+
+      // Checked after NOT_FOUND (an unknown note is a 404, not a "you forgot a field")
+      // but before anything is written, so a rejected write still leaves no trace.
+      if (requireRevision && appendContent === undefined && expected === undefined) {
+        throw codedError(
+          'EXPECTED_REVISION_REQUIRED',
+          'expectedRevision is required for a replacement write. Read the note first and pass its ' +
+          'current `revision`, or use appendContent instead if you only need to add to it.'
+        );
+      }
 
       if (expected !== undefined && expected !== existing.revision) {
         throw codedError('REVISION_CONFLICT', 'Note changed since you read it.', {
@@ -671,7 +686,7 @@ export class NoteService {
     const safeSortOrder = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
     const [rows] = await pool.query(
-      `SELECT n.id, n.title, n.slug, n.status, n.due_date, n.created_at, n.updated_at,
+      `SELECT n.id, n.title, n.slug, n.status, n.due_date, n.created_at, n.updated_at, n.revision,
               LEFT(n.content_text, 160) as preview,
               (SELECT COUNT(*) FROM note_links nl WHERE nl.target_note_id = n.id) as backlink_count
        FROM notes n
@@ -705,6 +720,7 @@ export class NoteService {
       slug: r.slug,
       status: r.status,
       dueDate: r.due_date,
+      revision: r.revision,
       preview: r.preview || '',
       backlinkCount: Number(r.backlink_count || 0),
       createdAt: r.created_at,
@@ -927,13 +943,13 @@ export class NoteService {
    * edit, so the restore itself is snapshotted and can be undone.
    * @returns {Promise<Object|null>} the updated note, or null if the version isn't this note's
    */
-  async restoreVersion(noteId, versionId, { expectedRevision } = {}) {
+  async restoreVersion(noteId, versionId, { expectedRevision, requireRevision = false } = {}) {
     const [rows] = await pool.query(
       `SELECT title, content FROM note_versions WHERE id = ? AND note_id = ?`,
       [versionId, noteId]
     );
     if (!rows.length) return null;
-    return this.updateNote(noteId, { title: rows[0].title, content: rows[0].content, expectedRevision });
+    return this.updateNote(noteId, { title: rows[0].title, content: rows[0].content, expectedRevision, requireRevision });
   }
 
   /**

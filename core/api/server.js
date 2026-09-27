@@ -238,14 +238,14 @@ function sendServiceError(res, err, fallbackStatus = 400) {
   if (err.code === 'REVISION_CONFLICT') {
     return res.status(409).json({ error: err.message, code: err.code, currentRevision: err.currentRevision });
   }
-  if (err.code === 'INVALID_ARGUMENT') {
+  if (err.code === 'INVALID_ARGUMENT' || err.code === 'EXPECTED_REVISION_REQUIRED') {
     return res.status(400).json({ error: err.message, code: err.code });
   }
   return res.status(fallbackStatus).json({ error: err.message });
 }
 
-// Update note. Send `expectedRevision` (the revision you last read) to be refused with
-// 409 instead of overwriting a newer edit.
+// Update note. expectedRevision (the revision you last read) is required: a write
+// missing it is refused with 400 before anything is touched, and a stale one with 409.
 app.put('/api/notes/:id', async (req, res) => {
   try {
     const { title, content, status, dueDate, properties, customTags, project, expectedRevision } = req.body;
@@ -257,7 +257,8 @@ app.put('/api/notes/:id', async (req, res) => {
       properties,
       customTags,
       project,
-      expectedRevision
+      expectedRevision,
+      requireRevision: true
     });
     res.json({ note });
   } catch (err) {
@@ -305,7 +306,8 @@ app.post('/api/notes/:id/versions/:versionId/restore', async (req, res) => {
       return res.status(400).json({ error: 'Invalid version id' });
     }
     const note = await noteService.restoreVersion(req.params.id, versionId, {
-      expectedRevision: req.body?.expectedRevision
+      expectedRevision: req.body?.expectedRevision,
+      requireRevision: true
     });
     if (!note) return res.status(404).json({ error: 'Version not found for this note' });
     res.json({ note });
