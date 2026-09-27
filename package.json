@@ -36,6 +36,7 @@
     "@modelcontextprotocol/sdk": "^1.6.1",
     "adm-zip": "^0.6.0",
     "archiver": "^7.0.1",
+    "content-disposition": "^3.0.0",
     "cors": "^2.8.5",
     "dompurify": "^3.4.15",
     "dotenv": "^16.4.7",

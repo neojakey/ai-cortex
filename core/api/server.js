@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import archiver from 'archiver';
+import { create as contentDisposition } from 'content-disposition';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -383,6 +384,18 @@ app.post('/api/attachments', upload.single('file'), async (req, res) => {
   }
 });
 
+// Types we actually render inline (the thumbnail grid, the audio/video player, the PDF
+// viewer). Anything else — most importantly text/html and image/svg+xml, which can carry
+// script that would otherwise run in this app's own origin when opened in a new tab — is
+// forced to download instead. Content-Disposition: attachment does this regardless of
+// what Content-Type claims, so no attacker-controlled type can talk its way past it.
+const INLINE_PREVIEW_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'audio/mpeg', 'audio/wav', 'audio/ogg',
+  'video/mp4', 'video/webm',
+  'application/pdf'
+]);
+
 // Stream attachment file with Range & Cache-Control headers
 app.get('/api/attachments/:id/file', async (req, res) => {
   try {
@@ -397,6 +410,9 @@ app.get('/api/attachments/:id/file', async (req, res) => {
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
     const range = req.headers.range;
+    const disposition = contentDisposition(attachment.filename, {
+      type: INLINE_PREVIEW_TYPES.has(attachment.mimeType) ? 'inline' : 'attachment'
+    });
 
     // HTTP 206 Partial Content (Range requests for audio/video)
     if (range) {
@@ -411,6 +427,8 @@ app.get('/api/attachments/:id/file', async (req, res) => {
         'Accept-Ranges': 'bytes',
         'Content-Length': chunksize,
         'Content-Type': attachment.mimeType,
+        'Content-Disposition': disposition,
+        'X-Content-Type-Options': 'nosniff',
         'ETag': `"${attachment.sha256}"`,
         'Cache-Control': 'public, max-age=31536000, immutable'
       });
@@ -419,6 +437,8 @@ app.get('/api/attachments/:id/file', async (req, res) => {
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': attachment.mimeType,
+        'Content-Disposition': disposition,
+        'X-Content-Type-Options': 'nosniff',
         'ETag': `"${attachment.sha256}"`,
         'Cache-Control': 'public, max-age=31536000, immutable'
       });
@@ -487,7 +507,11 @@ app.get('/api/attachments/:id/thumb', async (req, res) => {
         }
       });
     }
-    res.set({ 'Content-Type': isPdf ? 'image/png' : 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable' });
+    res.set({
+      'Content-Type': isPdf ? 'image/png' : 'image/jpeg',
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'public, max-age=31536000, immutable'
+    });
     fs.createReadStream(out).pipe(res);
   } catch {
     res.status(404).send('No preview');
