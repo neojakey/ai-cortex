@@ -3,9 +3,6 @@ import { pool } from '../db/pool.js';
 import { slugify, extractWikilinks, extractHashtags, extractTasks, markdownToPlaintext, toBooleanFulltextQuery } from './parser.js';
 import { projectService } from './projectService.js';
 
-const PRUNE_ORPHAN_TAGS_SQL =
-  `DELETE t FROM tags t LEFT JOIN note_tags nt ON nt.tag_id = t.id WHERE nt.tag_id IS NULL`;
-
 function normalizeCustomTags(customTags) {
   return (Array.isArray(customTags) ? customTags : [])
     .filter((t) => typeof t === 'string')
@@ -99,9 +96,11 @@ export class NoteService {
         [id, title.trim(), slug, content, contentText, status, dueDate || null, projectRecord ? projectRecord.id : null]
       );
 
-      // 2. Process Tags (both extracted #tags and explicitly passed tags)
-      const extractedTags = extractHashtags(content);
-      const allTags = Array.from(new Set([...extractedTags, ...normalizeCustomTags(customTags)]));
+      // 2. Process Tags (both extracted #tags and explicitly passed tags), recording
+      // which of the two origins each tag has (see updateNote for why this matters).
+      const hashtagSet = new Set(extractHashtags(content));
+      const explicitSet = new Set(normalizeCustomTags(customTags));
+      const allTags = new Set([...hashtagSet, ...explicitSet]);
 
       for (const tagName of allTags) {
         if (!tagName) continue;
@@ -109,8 +108,8 @@ export class NoteService {
         const [tagRows] = await conn.query(`SELECT id FROM tags WHERE name = ?`, [tagName]);
         if (tagRows.length) {
           await conn.query(
-            `INSERT IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)`,
-            [id, tagRows[0].id]
+            `INSERT IGNORE INTO note_tags (note_id, tag_id, from_hashtag, from_explicit) VALUES (?, ?, ?, ?)`,
+            [id, tagRows[0].id, hashtagSet.has(tagName) ? 1 : 0, explicitSet.has(tagName) ? 1 : 0]
           );
         }
       }
@@ -244,21 +243,78 @@ export class NoteService {
       const titleDidChange = newTitle !== existing.title;
       const contentDidChange = newContent !== existingContent;
 
-      // Tags are derived from content plus explicit tags; only re-sync when either could differ.
-      const syncTags = contentDidChange || customTags !== undefined;
-      const tagsToSync = syncTags
-        ? Array.from(new Set([...extractHashtags(newContent), ...normalizeCustomTags(customTags)])).filter(Boolean)
-        : null;
+      // Tags have two independent origins: literally typed in content ("from_hashtag")
+      // or passed explicitly via customTags ("from_explicit"). A write only touches the
+      // origin(s) it actually provides, so a content-only edit can never erase an
+      // explicit tag that isn't (and never was) typed as a hashtag, and vice versa.
+      // A tag row is kept while either origin still claims it, and dropped once neither does.
+      const touchesHashtagTags = contentDidChange;
+      const touchesExplicitTags = customTags !== undefined;
 
-      // Semantic no-op check: compare normalized values, not raw input.
-      let tagsDidChange = false;
-      if (tagsToSync) {
-        const [tagNameRows] = await conn.query(
-          `SELECT t.name FROM tags t JOIN note_tags nt ON t.id = nt.tag_id WHERE nt.note_id = ?`,
+      let nextTagState = null; // Map<name, {from_hashtag, from_explicit}>; set only when tags are touched
+      let tagsDidChange = false; // the *visible* tag set differs (drives the no-op/revision check)
+      let tagFlagsDidChange = false; // any per-tag origin flag differs, even if invisibly
+      let removedTagNames = []; // tags this note is dropping; the only ones that could become orphaned
+
+      if (touchesHashtagTags || touchesExplicitTags) {
+        const [currentTagRows] = await conn.query(
+          `SELECT t.name, nt.from_hashtag, nt.from_explicit
+           FROM tags t JOIN note_tags nt ON t.id = nt.tag_id WHERE nt.note_id = ?`,
           [id]
         );
-        tagsDidChange = !sameSet(tagsToSync, tagNameRows.map((r) => r.name));
+        nextTagState = new Map(
+          currentTagRows.map((r) => [r.name, { from_hashtag: !!r.from_hashtag, from_explicit: !!r.from_explicit }])
+        );
+
+        const setOrigin = (names, origin) => {
+          for (const flags of nextTagState.values()) flags[origin] = false;
+          for (const name of names) {
+            if (!nextTagState.has(name)) nextTagState.set(name, { from_hashtag: false, from_explicit: false });
+            nextTagState.get(name)[origin] = true;
+          }
+        };
+        if (touchesHashtagTags) setOrigin(extractHashtags(newContent), 'from_hashtag');
+        if (touchesExplicitTags) setOrigin(normalizeCustomTags(customTags), 'from_explicit');
+
+        const isActive = (f) => f.from_hashtag || f.from_explicit;
+        const currentActive = currentTagRows.filter(isActive).map((r) => r.name);
+        const nextActive = [...nextTagState].filter(([, f]) => isActive(f)).map(([name]) => name);
+        tagsDidChange = !sameSet(currentActive, nextActive);
+        removedTagNames = currentActive.filter((name) => !nextActive.includes(name));
+
+        const currentFlags = new Map(currentTagRows.map((r) => [r.name, r]));
+        tagFlagsDidChange = [...nextTagState].some(([name, flags]) => {
+          const before = currentFlags.get(name);
+          return !before || !!before.from_hashtag !== flags.from_hashtag || !!before.from_explicit !== flags.from_explicit;
+        });
       }
+
+      // Applies nextTagState verbatim: delete-and-reinsert is simpler than a surgical
+      // diff and nextTagState already carries forward every untouched tag's flags.
+      const applyTagState = async () => {
+        await conn.query(`DELETE FROM note_tags WHERE note_id = ?`, [id]);
+        for (const [tagName, flags] of nextTagState) {
+          if (!flags.from_hashtag && !flags.from_explicit) continue;
+          await conn.query(`INSERT IGNORE INTO tags (name) VALUES (?)`, [tagName]);
+          const [tagRows] = await conn.query(`SELECT id FROM tags WHERE name = ?`, [tagName]);
+          if (tagRows.length) {
+            await conn.query(
+              `INSERT IGNORE INTO note_tags (note_id, tag_id, from_hashtag, from_explicit) VALUES (?, ?, ?, ?)`,
+              [id, tagRows[0].id, flags.from_hashtag ? 1 : 0, flags.from_explicit ? 1 : 0]
+            );
+          }
+        }
+        // Only the tags this note just stopped using can have become orphaned. Checking
+        // just those, instead of scanning the whole tags/note_tags tables, avoids taking
+        // a wide lock that can deadlock against other notes' concurrent tag writes.
+        if (removedTagNames.length) {
+          await conn.query(
+            `DELETE t FROM tags t
+             WHERE t.name IN (?) AND NOT EXISTS (SELECT 1 FROM note_tags nt WHERE nt.tag_id = t.id)`,
+            [removedTagNames]
+          );
+        }
+      };
 
       let propertiesDidChange = false;
       const hasProperties = properties && typeof properties === 'object' && !Array.isArray(properties);
@@ -283,6 +339,9 @@ export class NoteService {
         !propertiesDidChange;
 
       if (isNoop) {
+        // Nothing visible changed, but a tag's origin flags may still need persisting
+        // (e.g. clearing explicit tags while a hashtag still keeps the tag itself visible).
+        if (tagFlagsDidChange) await applyTagState();
         const unchanged = await this.getNoteById(id, conn);
         await conn.commit();
         return unchanged;
@@ -326,23 +385,7 @@ export class NoteService {
       }
 
       // 3. Update tags if content changed or explicit tags were provided
-      if (tagsToSync) {
-        await conn.query(`DELETE FROM note_tags WHERE note_id = ?`, [id]);
-
-        for (const tagName of tagsToSync) {
-          await conn.query(`INSERT IGNORE INTO tags (name) VALUES (?)`, [tagName]);
-          const [tagRows] = await conn.query(`SELECT id FROM tags WHERE name = ?`, [tagName]);
-          if (tagRows.length) {
-            await conn.query(
-              `INSERT IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)`,
-              [id, tagRows[0].id]
-            );
-          }
-        }
-
-        // Drop tags that no longer belong to any note
-        await conn.query(PRUNE_ORPHAN_TAGS_SQL);
-      }
+      if (nextTagState) await applyTagState();
 
       // 4. Update Wikilinks if content changed
       if (contentDidChange) {
@@ -600,8 +643,10 @@ export class NoteService {
     }
 
     if (project) {
-      whereClauses.push(`n.project_id = (SELECT id FROM projects WHERE slug = ? OR id = ?)`);
-      params.push(project, project);
+      const resolved = await projectService.getBySlugOrId(project);
+      if (!resolved) return []; // an unresolvable project has no notes, not "match everything"
+      whereClauses.push(`n.project_id = ?`);
+      params.push(resolved.id);
     }
 
     if (tag) {
@@ -802,9 +847,16 @@ export class NoteService {
    */
   async deleteNote(id, { permanent = false } = {}) {
     if (permanent) {
+      // Only this note's own tags can become orphaned by deleting it (ON DELETE CASCADE
+      // removes its note_tags rows), so check just those instead of the whole tags table.
+      const [tagRows] = await pool.query(`SELECT tag_id FROM note_tags WHERE note_id = ?`, [id]);
       const [res] = await pool.query(`DELETE FROM notes WHERE id = ?`, [id]);
-      if (res.affectedRows > 0) {
-        await pool.query(PRUNE_ORPHAN_TAGS_SQL);
+      if (res.affectedRows > 0 && tagRows.length) {
+        await pool.query(
+          `DELETE t FROM tags t
+           WHERE t.id IN (?) AND NOT EXISTS (SELECT 1 FROM note_tags nt WHERE nt.tag_id = t.id)`,
+          [tagRows.map((r) => r.tag_id)]
+        );
       }
       return res.affectedRows > 0;
     } else {

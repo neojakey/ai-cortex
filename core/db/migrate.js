@@ -2,6 +2,7 @@ import { pool } from './pool.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { extractHashtags } from '../services/parser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -104,6 +105,33 @@ export async function runMigrations() {
         CONSTRAINT fk_tags_tag FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    // Which of the two ways a tag got attached still apply, so a write that touches
+    // only one (an explicit customTags list, or content with its hashtags) doesn't
+    // erase a tag the other way still claims. A row is deleted once neither applies.
+    const [tagOriginCols] = await conn.query(`
+      SELECT COLUMN_NAME FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'note_tags' AND COLUMN_NAME = 'from_hashtag'
+    `);
+    if (!tagOriginCols.length) {
+      await conn.query(`ALTER TABLE note_tags ADD COLUMN from_hashtag TINYINT(1) NOT NULL DEFAULT 0;`);
+      await conn.query(`ALTER TABLE note_tags ADD COLUMN from_explicit TINYINT(1) NOT NULL DEFAULT 1;`);
+
+      // Backfill: mark a tag as hashtag-origin only where its exact name is a hashtag
+      // in that note's content today. Existing tags default to from_explicit = 1 above,
+      // so nothing that was visible before this migration disappears because of it.
+      const [notesForBackfill] = await conn.query(`SELECT id, content FROM notes`);
+      for (const n of notesForBackfill) {
+        const tagNames = extractHashtags(n.content || '');
+        if (!tagNames.length) continue;
+        await conn.query(
+          `UPDATE note_tags nt JOIN tags t ON t.id = nt.tag_id
+           SET nt.from_hashtag = 1
+           WHERE nt.note_id = ? AND t.name IN (?)`,
+          [n.id, tagNames]
+        );
+      }
+    }
 
     await conn.query(`
       CREATE TABLE IF NOT EXISTS note_properties (

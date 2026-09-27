@@ -27,13 +27,15 @@ export class ProjectService {
   }
 
   /**
-   * Look up a project by its slug or ID
+   * Look up a project by its ID, slug, or exact display name (case-insensitive).
+   * Used everywhere a caller may pass any of the three, e.g. search and list filters.
    */
   async getBySlugOrId(idOrSlug) {
-    if (!idOrSlug) return null;
+    const trimmed = typeof idOrSlug === 'string' ? idOrSlug.trim() : idOrSlug;
+    if (!trimmed) return null;
     const [rows] = await pool.query(
-      `SELECT id, name, slug, color, created_at FROM projects WHERE id = ? OR slug = ?`,
-      [idOrSlug, idOrSlug]
+      `SELECT id, name, slug, color, created_at FROM projects WHERE id = ? OR slug = ? OR LOWER(name) = LOWER(?)`,
+      [trimmed, trimmed, trimmed]
     );
     if (!rows.length) return null;
     const r = rows[0];
