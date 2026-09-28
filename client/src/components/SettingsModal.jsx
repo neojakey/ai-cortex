@@ -744,11 +744,12 @@ export default function SettingsModal({
             <>
               <div>
                 <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-main)', marginBottom: 6 }}>
-                  Obsidian Compatibility & Vault Backup
+                  Obsidian Compatibility
                 </h4>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                  Never be locked in. Export all your MySQL notes and attachments as a standard Obsidian vault at any time,
-                  or import an existing Obsidian Markdown vault into MySQL.
+                  Never be locked in. Export all your notes and attachments as a standard, portable Obsidian vault at
+                  any time, or import an existing Obsidian Markdown vault into MySQL. This is not a database backup —
+                  for that, use Backup &amp; Restore in the Database tab.
                 </p>
               </div>
 
