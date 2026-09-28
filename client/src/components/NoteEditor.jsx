@@ -47,6 +47,10 @@ function noteFields(n) {
   };
 }
 
+// A paste that is only a Google Photos link. The server does the real validation; private
+// library links are caught here too so the user gets told to use a share link instead.
+const GOOGLE_PHOTOS_SHARE_LINK = /^https:\/\/(photos\.app\.goo\.gl\/[\w-]+\/?|photos\.google\.com\/(share\/\S+|(u\/\d+\/)?photo\/\S+))$/;
+
 // localStorage can throw (private mode, blocked site data); never let that break the app.
 const viewModeStorage = {
   get(key) {
@@ -435,6 +439,55 @@ ${backlinksText}
     if (!isUploading) uploadFiles(Array.from(e.dataTransfer.files));
   };
 
+  // Pasting a Google Photos share link on its own saves the photo into the note instead of
+  // the link. The download takes a few seconds, so the result is applied to whatever the
+  // editor holds by then: at the paste position if this note is still open, or appended to
+  // the note on the server if the user has moved on. On failure the link itself is pasted,
+  // so nothing the user pasted is lost.
+  const handlePaste = async (e) => {
+    const text = e.clipboardData?.getData('text/plain')?.trim() || '';
+    if (!GOOGLE_PHOTOS_SHARE_LINK.test(text) || isUploading) return;
+    e.preventDefault();
+
+    const noteId = note.id;
+    const daily = isDailyNote;
+    const pos = e.target.selectionStart;
+    const stillOpen = () => latestRef.current.note?.id === noteId && latestRef.current.loadedNoteId === noteId;
+    const insertAtPaste = (snippet) =>
+      setContent((current) => current.slice(0, pos) + snippet + current.slice(pos));
+
+    setIsUploading(true);
+    try {
+      const res = await fetch('/api/attachments/from-google-photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: text, noteId })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.attachment) throw new Error(data.error || `Could not add photo (${res.status})`);
+
+      const image = `![Photo](${data.attachment.url})`;
+      if (daily) {
+        // Daily notes show photos in the side panel, like the photo button (embed: false)
+        if (stillOpen()) await onRefreshNote(noteId);
+      } else if (stillOpen()) {
+        const before = latestRef.current.content.slice(0, pos);
+        insertAtPaste(`${before && !before.endsWith('\n') ? '\n\n' : ''}${image}\n`);
+      } else {
+        const fresh = await fetch(`/api/notes/${noteId}`).then((r) => r.json());
+        await onUpdateNoteRef.current(noteId, {
+          content: `${fresh.note.content}\n\n${image}\n`,
+          expectedRevision: fresh.note.revision
+        });
+      }
+    } catch (err) {
+      if (stillOpen()) insertAtPaste(text);
+      alert(err.message);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const changeViewMode = (mode) => {
     setViewMode(mode);
     viewModeStorage.set('ai_cortex_view_mode', mode);
@@ -561,6 +614,7 @@ ${backlinksText}
                 placeholder="Write your thoughts in Markdown... Type [[ to link notes, or #tags to categorize..."
                 value={content}
                 onChange={handleContentChange}
+                onPaste={handlePaste}
               />
 
               {/* Floating Wikilink Popup */}

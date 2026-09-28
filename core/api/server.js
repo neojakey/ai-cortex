@@ -17,6 +17,7 @@ import { attachmentService } from '../services/attachmentService.js';
 import { exportService } from '../services/exportService.js';
 import { projectService } from '../services/projectService.js';
 import { backupService } from '../services/backupService.js';
+import { importGooglePhoto, classifyGooglePhotosUrl, GooglePhotosImportError } from '../services/googlePhotosImport.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -81,9 +82,10 @@ app.use((req, res, next) => {
 });
 
 // Multer memory storage for uploads
+const MAX_UPLOAD_BYTES = (parseInt(process.env.MAX_UPLOAD_MB || '50', 10)) * 1024 * 1024;
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: (parseInt(process.env.MAX_UPLOAD_MB || '50', 10)) * 1024 * 1024 }
+  limits: { fileSize: MAX_UPLOAD_BYTES }
 });
 
 /* =========================================================================
@@ -380,6 +382,39 @@ app.post('/api/attachments', upload.single('file'), async (req, res) => {
 
     res.status(201).json({ attachment });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Save the original photo behind a pasted Google Photos share link, as if it had been uploaded.
+app.post('/api/attachments/from-google-photos', async (req, res) => {
+  try {
+    const { url, noteId } = req.body || {};
+    if (!noteId) return res.status(400).json({ error: 'noteId is required' });
+    if (!url) return res.status(400).json({ error: 'url is required' });
+
+    const kind = classifyGooglePhotosUrl(url);
+    if (kind !== 'share') {
+      const error = kind === 'private'
+        ? "That's a private link. Use Share → Create link in Google Photos."
+        : 'Not a Google Photos share link';
+      return res.status(400).json({ error });
+    }
+
+    const note = await noteService.getNoteById(noteId);
+    if (!note) return res.status(404).json({ error: 'Note not found' });
+
+    const { buffer, mimeType, ext } = await importGooglePhoto(url, { maxBytes: MAX_UPLOAD_BYTES });
+    const attachment = await attachmentService.saveAttachment({
+      noteId,
+      filename: `google-photo${ext}`,
+      mimeType,
+      buffer
+    });
+
+    res.status(201).json({ attachment });
+  } catch (err) {
+    if (err instanceof GooglePhotosImportError) return res.status(err.status).json({ error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
