@@ -28,7 +28,10 @@ import {
 import { renderNoteMarkdown, WIKILINK_PREFIX } from '../lib/renderMarkdown.js';
 import { getDefaultThumbSize } from '../lib/prefs.js';
 import { createSaveCoordinator } from '../lib/saveCoordinator.js';
-import { draftStorage, shouldResumeDraft } from '../lib/draftStorage.js';
+import { draftStorage, shouldResumeDraft, shouldPersistEdits, purgeLegacyDrafts } from '../lib/draftStorage.js';
+
+// Once per browser, before any note loads: drop drafts written before the note-switch fix.
+purgeLegacyDrafts();
 
 // The fields the editor saves, in one comparable shape (used to detect "nothing to save").
 function editorFields({ note, title, content, status, dueDate }) {
@@ -90,6 +93,9 @@ export default function NoteEditor({
   const [content, setContent] = useState(note?.content || '');
   const [status, setStatus] = useState(note?.status || 'active');
   const [dueDate, setDueDate] = useState(note?.dueDate ? note.dueDate.slice(0, 10) : '');
+  // Which note the fields above were loaded from. Lags `note` by one render on a switch;
+  // nothing may be saved until they match (see shouldPersistEdits).
+  const [loadedNoteId, setLoadedNoteId] = useState(null);
   const [copiedContext, setCopiedContext] = useState(false);
   // Coordinator state: { status: 'idle' | 'saving' | 'error' | 'conflict', conflict }.
   // The displayed `saveStatus` (below) adds 'saved' / 'unsaved' on top of it.
@@ -102,7 +108,7 @@ export default function NoteEditor({
   const saveTimerRef = useRef(null);
   const pendingFlushRef = useRef(null); // fields still waiting on the 600ms debounce, if any
   const latestRef = useRef({});
-  latestRef.current = { note, title, content, status, dueDate };
+  latestRef.current = { note, loadedNoteId, title, content, status, dueDate };
   const onUpdateNoteRef = useRef(onUpdateNote);
   onUpdateNoteRef.current = onUpdateNote;
 
@@ -162,6 +168,7 @@ export default function NoteEditor({
     setContent((resumeDraft ? draft.content : note.content) || '');
     setStatus((resumeDraft ? draft.status : note.status) || 'active');
     setDueDate((resumeDraft ? draft.dueDate : (note.dueDate ? note.dueDate.slice(0, 10) : '')) || '');
+    setLoadedNoteId(note.id);
     // The coordinator's baseline is always the server's own revision: if a draft was
     // resumed, it now looks "dirty" relative to that baseline, so the normal debounced
     // autosave (and the existing conflict UI, unchanged) picks it up like any other edit.
@@ -184,6 +191,8 @@ export default function NoteEditor({
 
   // Persist the current fields immediately (used by auto-save, the Save button, and Ctrl/Cmd+S)
   const saveNow = () => {
+    const { note: current, loadedNoteId: loaded } = latestRef.current;
+    if (!current || loaded !== current.id) return Promise.resolve(); // mid-switch: fields aren't this note's
     clearTimeout(saveTimerRef.current);
     pendingFlushRef.current = null; // this save makes the debounced flush redundant
     return saveRef.current.save();
@@ -235,7 +244,7 @@ export default function NoteEditor({
   // note switch (handled by the next effect) can flush them over the network instead of
   // just losing them when this effect's cleanup cancels the timer.
   useEffect(() => {
-    if (!note || !isDirty || saveState.conflict) {
+    if (!shouldPersistEdits({ noteId: note?.id, loadedNoteId, isDirty, conflict: saveState.conflict })) {
       pendingFlushRef.current = null;
       return;
     }
@@ -248,7 +257,7 @@ export default function NoteEditor({
       saveNow();
     }, 600);
     return () => clearTimeout(saveTimerRef.current);
-  }, [title, content, status, dueDate, note, saveState.conflict]);
+  }, [title, content, status, dueDate, note, loadedNoteId, saveState.conflict]);
 
   // Flushes a still-pending debounce over the network when leaving this note (switch or
   // unmount) within the 600ms window, so a fast edit-then-navigate is never silently
