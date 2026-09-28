@@ -979,11 +979,13 @@ button, input, textarea, select {
   background: var(--bg-surface);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
+/* Inline code gets an accent tint: the plain surface colour barely differs from the page. */
 .note-rendered code {
   font-family: var(--font-mono);
   font-size: 0.9em;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-dim);
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent);
   border-radius: var(--radius-xs);
   padding: 1px 6px;
 }
