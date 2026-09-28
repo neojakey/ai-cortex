@@ -24,13 +24,15 @@ import {
   ChevronRight,
   CalendarDays,
   AlertCircle,
-  Crop
+  Crop,
+  ImagePlus
 } from 'lucide-react';
 import { renderNoteMarkdown, WIKILINK_PREFIX } from '../lib/renderMarkdown.js';
 import { getDefaultThumbSize } from '../lib/prefs.js';
 import { createSaveCoordinator } from '../lib/saveCoordinator.js';
 import { draftStorage, shouldResumeDraft, shouldPersistEdits, purgeLegacyDrafts } from '../lib/draftStorage.js';
 import CropModal from './CropModal.jsx';
+import GooglePhotosModal from './GooglePhotosModal.jsx';
 
 // Once per browser, before any note loads: drop drafts written before the note-switch fix.
 purgeLegacyDrafts();
@@ -48,10 +50,6 @@ function noteFields(n) {
     dueDate: n.dueDate ? n.dueDate.slice(0, 10) : null
   };
 }
-
-// A paste that is only a Google Photos link. The server does the real validation; private
-// library links are caught here too so the user gets told to use a share link instead.
-const GOOGLE_PHOTOS_SHARE_LINK = /^https:\/\/(photos\.app\.goo\.gl\/[\w-]+\/?|photos\.google\.com\/(share\/\S+|(u\/\d+\/)?photo\/\S+))$/;
 
 // localStorage can throw (private mode, blocked site data); never let that break the app.
 // Photo types the server can crop (see CROPPABLE_TYPES in core/services/photoCrop.js).
@@ -162,6 +160,7 @@ export default function NoteEditor({
   const [isUploading, setIsUploading] = useState(false);
   const [cropTarget, setCropTarget] = useState(null); // the attachment open in the crop window
   const [removingId, setRemovingId] = useState(null); // the attachment being removed, if any
+  const [googlePhotosFor, setGooglePhotosFor] = useState(null); // note id the Google Photos window adds to
   const [viewMode, setViewMode] = useState(() => viewModeStorage.get('ai_cortex_view_mode') || 'read');
   const [thumbSize, setThumbSize] = useState(getDefaultThumbSize);
   const [fullWidth, setFullWidth] = useState(() => viewModeStorage.get('ai_cortex_full_width') === 'true');
@@ -468,52 +467,15 @@ ${backlinksText}
     if (!isUploading) uploadFiles(Array.from(e.dataTransfer.files));
   };
 
-  // Pasting a Google Photos share link on its own saves the photo into the note instead of
-  // the link. The download takes a few seconds, so the result is applied to whatever the
-  // editor holds by then: at the paste position if this note is still open, or appended to
-  // the note on the server if the user has moved on. On failure the link itself is pasted,
-  // so nothing the user pasted is lost.
-  const handlePaste = async (e) => {
-    const text = e.clipboardData?.getData('text/plain')?.trim() || '';
-    if (!GOOGLE_PHOTOS_SHARE_LINK.test(text) || isUploading) return;
-    e.preventDefault();
-
-    const noteId = note.id;
-    const daily = isDailyNote;
-    const pos = e.target.selectionStart;
-    const stillOpen = () => latestRef.current.note?.id === noteId && latestRef.current.loadedNoteId === noteId;
-    const insertAtPaste = (snippet) =>
-      setContent((current) => current.slice(0, pos) + snippet + current.slice(pos));
-
-    setIsUploading(true);
+  // A photo added from a Google Photos share link (GooglePhotosModal) is only attached,
+  // never written into the text: refresh the attachments if that note is still open.
+  // The note's text and revision don't change, so unsaved typing is unaffected.
+  const handleGooglePhotoAdded = async (noteId) => {
+    if (latestRef.current.note?.id !== noteId || latestRef.current.loadedNoteId !== noteId) return;
     try {
-      const res = await fetch('/api/attachments/from-google-photos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: text, noteId })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.attachment) throw new Error(data.error || `Could not add photo (${res.status})`);
-
-      const image = `![Photo](${data.attachment.url})`;
-      if (daily) {
-        // Daily notes show photos in the side panel, like the photo button (embed: false)
-        if (stillOpen()) await onRefreshNote(noteId);
-      } else if (stillOpen()) {
-        const before = latestRef.current.content.slice(0, pos);
-        insertAtPaste(`${before && !before.endsWith('\n') ? '\n\n' : ''}${image}\n`);
-      } else {
-        const fresh = await fetch(`/api/notes/${noteId}`).then((r) => r.json());
-        await onUpdateNoteRef.current(noteId, {
-          content: `${fresh.note.content}\n\n${image}\n`,
-          expectedRevision: fresh.note.revision
-        });
-      }
-    } catch (err) {
-      if (stillOpen()) insertAtPaste(text);
-      alert(err.message);
-    } finally {
-      setIsUploading(false);
+      await onRefreshNote(noteId);
+    } catch {
+      /* the photo is saved; it shows up on the next reload */
     }
   };
 
@@ -714,7 +676,6 @@ ${backlinksText}
                 placeholder="Write your thoughts in Markdown... Type [[ to link notes, or #tags to categorize..."
                 value={content}
                 onChange={handleContentChange}
-                onPaste={handlePaste}
               />
 
               {/* Floating Wikilink Popup */}
@@ -880,6 +841,14 @@ ${backlinksText}
           >
             <Paperclip size={15} />
           </button>
+          <button
+            className="btn-icon"
+            onClick={() => setGooglePhotosFor(note.id)}
+            title="Add a photo from a Google Photos share link"
+            aria-label="Add from Google Photos"
+          >
+            <ImagePlus size={15} />
+          </button>
 
           {/* Delete note */}
           <button 
@@ -990,15 +959,21 @@ ${backlinksText}
                   </a>
                 ))
               ) : (
-                <button
-                  type="button"
-                  className="daily-photo-empty"
-                  disabled={isUploading}
-                  onClick={() => photoInputRef.current?.click()}
-                >
-                  <Camera size={20} />
-                  <span>{isUploading ? 'Adding photo…' : 'Add a photo to document today'}</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="daily-photo-empty"
+                    disabled={isUploading}
+                    onClick={() => photoInputRef.current?.click()}
+                  >
+                    <Camera size={20} />
+                    <span>{isUploading ? 'Adding photo…' : 'Add a photo to document today'}</span>
+                  </button>
+                  <button type="button" className="daily-photo-google" onClick={() => setGooglePhotosFor(note.id)}>
+                    <ImagePlus size={15} />
+                    <span>From Google Photos</span>
+                  </button>
+                </>
               )}
             </aside>
           </div>
@@ -1065,6 +1040,14 @@ ${backlinksText}
           )}
         </div>
       </div>
+
+      {googlePhotosFor && (
+        <GooglePhotosModal
+          noteId={googlePhotosFor}
+          onClose={() => setGooglePhotosFor(null)}
+          onAdded={() => handleGooglePhotoAdded(googlePhotosFor)}
+        />
+      )}
 
       {cropTarget && (
         <CropModal
