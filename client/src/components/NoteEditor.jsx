@@ -110,6 +110,7 @@ function AttachmentThumb({ att, onCrop, onRemove, busy }) {
 export default function NoteEditor({
   note,
   allNotes,
+  projects = [],
   onUpdateNote,
   onRefreshNote,
   onDeleteNote,
@@ -709,7 +710,7 @@ ${backlinksText}
             <div
               className="note-rendered"
               onClick={handleRenderedClick}
-              dangerouslySetInnerHTML={{ __html: renderNoteMarkdown(readContent) }}
+              dangerouslySetInnerHTML={{ __html: renderNoteMarkdown(readContent, { projectNames: isDailyNote ? projects.map((p) => p.name) : undefined }) }}
             />
           ) : (
             <div className="note-rendered-empty">

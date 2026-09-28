@@ -405,6 +405,7 @@ export default function App() {
       <main className="main-view">
         {activeView === 'document' && (
           <NoteEditor
+            projects={projects}
             note={activeNote}
             allNotes={notes}
             onUpdateNote={handleUpdateNote}

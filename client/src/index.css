@@ -989,6 +989,22 @@ button, input, textarea, select {
   border-radius: var(--radius-xs);
   padding: 1px 6px;
 }
+/* Project labels on daily notes ("bolsahotelera: …"): the accent's opposite hue at the same
+   lightness and strength, so it follows the chosen palette and theme; violet where the
+   browser can't compute it. A tag shape keeps it apart from links, which use the accent. */
+.note-rendered .project-label {
+  --project-hue: var(--accent-violet);
+  display: inline-block;
+  padding: 0 7px;
+  border-radius: var(--radius-xs);
+  font-weight: 600;
+  color: color-mix(in oklch, var(--project-hue) 75%, var(--text-main));
+  background: color-mix(in srgb, var(--project-hue) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--project-hue) 35%, transparent);
+}
+@supports (color: oklch(from red l c h)) {
+  .note-rendered .project-label { --project-hue: oklch(from var(--accent-primary) l c calc(h + 180)); }
+}
 .note-rendered pre {
   background: var(--bg-surface);
   border: 1px solid var(--border-dim);

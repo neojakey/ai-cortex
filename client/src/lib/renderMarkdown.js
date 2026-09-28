@@ -1,5 +1,6 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { projectKeys, splitProjectLabel } from './projectLabels.js';
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -28,8 +29,10 @@ function wikilinksToMarkdownLinks(content) {
  * External links open in a new tab; wikilinks are left for the caller
  * to intercept (href starts with "wikilink:"); checkboxes are disabled
  * (read-only display, not an editable task list).
+ * With `projectNames`, a bullet that starts with one of them and a colon shows the name
+ * as a tag (used on daily notes; see projectLabels.js).
  */
-export function renderNoteMarkdown(content) {
+export function renderNoteMarkdown(content, { projectNames } = {}) {
   if (!content || !content.trim()) return '';
 
   const withLinks = wikilinksToMarkdownLinks(content);
@@ -60,7 +63,36 @@ export function renderNoteMarkdown(content) {
     checkbox.disabled = true;
   });
 
+  const keys = projectKeys(projectNames);
+  if (keys.size > 0) {
+    container.querySelectorAll('li').forEach((li) => tagProjectLabel(li, keys));
+  }
+
   return container.innerHTML;
+}
+
+// The bullet's opening plain text: its first child (after a task checkbox), or the first
+// child of its paragraph in a loose list. Formatted openings (bold, links) are left alone.
+function openingTextNode(li) {
+  let node = li.firstChild;
+  if (node && node.nodeType === Node.ELEMENT_NODE && node.matches('input[type="checkbox"]')) node = node.nextSibling;
+  if (node && node.nodeType === Node.ELEMENT_NODE && node.tagName === 'P') node = node.firstChild;
+  return node && node.nodeType === Node.TEXT_NODE ? node : null;
+}
+
+function tagProjectLabel(li, keys) {
+  const textNode = openingTextNode(li);
+  if (!textNode) return;
+  const parts = splitProjectLabel(textNode.nodeValue, keys);
+  if (!parts) return;
+  const tag = document.createElement('span');
+  tag.className = 'project-label';
+  tag.textContent = parts.label;
+  textNode.replaceWith(
+    ...(parts.before ? [document.createTextNode(parts.before)] : []),
+    tag,
+    document.createTextNode(parts.after)
+  );
 }
 
 export const WIKILINK_PREFIX = 'wikilink:';
