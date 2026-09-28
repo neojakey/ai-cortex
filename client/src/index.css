@@ -1365,14 +1365,24 @@ button, input, textarea, select {
   color: var(--text-main);
 }
 
-/* Crop to a square: the button on a photo, and the crop window */
+/* Crop / remove buttons on a photo or attachment card, and the crop window */
 .daily-photo,
 .attachment-thumb { position: relative; }
-.crop-btn {
+.photo-actions {
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 1;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+.daily-photo:hover .photo-actions,
+.attachment-card:hover .photo-actions,
+.photo-actions:focus-within { opacity: 1; }
+@media (hover: none) { .photo-actions { opacity: 1; } }
+.photo-action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1383,13 +1393,9 @@ button, input, textarea, select {
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--transition-fast);
 }
-.daily-photo:hover .crop-btn,
-.attachment-card:hover .crop-btn,
-.crop-btn:focus-visible { opacity: 1; }
-@media (hover: none) { .crop-btn { opacity: 1; } }
+.photo-action-btn:disabled { opacity: 0.5; cursor: default; }
+.remove-btn:hover:not(:disabled) { background: var(--accent-rose); }
 
 .crop-card { max-width: 900px; }
 .crop-stage {

@@ -66,21 +66,27 @@ const viewModeStorage = {
   }
 };
 
-function CropButton({ onClick }) {
+// Crop / remove buttons shown on a photo or attachment card on hover. They sit inside
+// a link to the file, so a click must not also open it.
+function AttachmentActions({ onCrop, onRemove, busy }) {
+  const act = (fn) => (e) => { e.preventDefault(); e.stopPropagation(); if (!busy) fn(); };
   return (
-    <button
-      type="button"
-      className="crop-btn"
-      title="Crop to a square"
-      aria-label="Crop to a square"
-      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}
-    >
-      <Crop size={14} />
-    </button>
+    <div className="photo-actions">
+      {onCrop && (
+        <button type="button" className="photo-action-btn crop-btn" title="Crop to a square" aria-label="Crop to a square" disabled={busy} onClick={act(onCrop)}>
+          <Crop size={14} />
+        </button>
+      )}
+      {onRemove && (
+        <button type="button" className="photo-action-btn remove-btn" title="Remove from note" aria-label="Remove from note" disabled={busy} onClick={act(onRemove)}>
+          <Trash2 size={14} />
+        </button>
+      )}
+    </div>
   );
 }
 
-function AttachmentThumb({ att, onCrop }) {
+function AttachmentThumb({ att, onCrop, onRemove, busy }) {
   // 0 = resized preview from the server, 1 = the original file, 2 = icon only
   const [stage, setStage] = useState(0);
   const isImage = (att.mimeType || '').startsWith('image/');
@@ -90,7 +96,7 @@ function AttachmentThumb({ att, onCrop }) {
   return (
     <a className="attachment-card" href={att.url} target="_blank" rel="noreferrer" title={att.filename}>
       <div className="attachment-thumb">
-        {onCrop && <CropButton onClick={onCrop} />}
+        <AttachmentActions onCrop={onCrop} onRemove={onRemove} busy={busy} />
         {src ? (
           <img key={src} src={src} alt={att.filename} loading="lazy" onError={() => setStage((s) => s + 1)} />
         ) : (
@@ -155,6 +161,7 @@ export default function NoteEditor({
   }
   const [isUploading, setIsUploading] = useState(false);
   const [cropTarget, setCropTarget] = useState(null); // the attachment open in the crop window
+  const [removingId, setRemovingId] = useState(null); // the attachment being removed, if any
   const [viewMode, setViewMode] = useState(() => viewModeStorage.get('ai_cortex_view_mode') || 'read');
   const [thumbSize, setThumbSize] = useState(getDefaultThumbSize);
   const [fullWidth, setFullWidth] = useState(() => viewModeStorage.get('ai_cortex_full_width') === 'true');
@@ -514,32 +521,70 @@ ${backlinksText}
   // Unsaved typing is saved first, so the server repoints the note's text on exactly what's
   // on screen, and the note's revision is sent so a change made elsewhere meanwhile is a
   // conflict rather than being overwritten. Throws to keep the window open with the error.
-  const saveCrop = async (square) => {
-    const noteId = note.id;
-    const attachmentId = cropTarget.id;
+  // Before the server edits this note's text (crop, remove): save what's typed and wait for
+  // it, then return the revision the server's copy is at. Throws if it couldn't be saved.
+  const saveBeforeServerEdit = async (what) => {
     await saveNow();
     for (let i = 0; i < 100 && saveRef.current.state.status === 'saving'; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     if (saveRef.current.state.status !== 'idle') {
-      throw new Error("Your note couldn't be saved, so the photo wasn't cropped. Fix that first, then try again.");
+      throw new Error(`Your note couldn't be saved, so the ${what}. Fix that first, then try again.`);
     }
+    return saveRef.current.baseRevision;
+  };
+  const conflictMessage = 'This note changed somewhere else. Reload the note and try again.';
+
+  const saveCrop = async (square) => {
+    const noteId = note.id;
+    const attachmentId = cropTarget.id;
+    const expectedRevision = await saveBeforeServerEdit("photo wasn't cropped");
 
     const res = await fetch(`/api/attachments/${attachmentId}/crop`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...square, expectedRevision: saveRef.current.baseRevision })
+      body: JSON.stringify({ ...square, expectedRevision })
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.code === 'REVISION_CONFLICT'
-        ? 'This note changed somewhere else. Close this, reload the note and try again.'
+        ? conflictMessage
         : data.error || `Could not crop the photo (${res.status})`);
     }
 
     setCropTarget(null);
     if (latestRef.current.note?.id === noteId && latestRef.current.loadedNoteId === noteId) {
       await refreshNow({ skipConfirm: true });
+    }
+  };
+
+  // Remove an attachment for good (core/services/attachmentRemoval.js), including its links
+  // in the text. Saved first and revision-checked, like a crop.
+  const removeAttachment = async (att) => {
+    if (removingId) return;
+    if (!window.confirm(`Remove "${att.filename}" from this note? This can't be undone.`)) return;
+    const noteId = note.id;
+    setRemovingId(att.id);
+    try {
+      const expectedRevision = await saveBeforeServerEdit('attachment was not removed');
+      const res = await fetch(`/api/attachments/${att.id}/remove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedRevision })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.code === 'REVISION_CONFLICT'
+          ? conflictMessage
+          : data.error || `Could not remove the attachment (${res.status})`);
+      }
+      if (latestRef.current.note?.id === noteId && latestRef.current.loadedNoteId === noteId) {
+        await refreshNow({ skipConfirm: true });
+      }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -936,7 +981,11 @@ ${backlinksText}
               {imageAttachments.length > 0 ? (
                 imageAttachments.map((a) => (
                   <a key={a.id} className="daily-photo" href={a.url} target="_blank" rel="noreferrer" title={a.filename}>
-                    {CROPPABLE_TYPES.has(a.mimeType) && <CropButton onClick={() => setCropTarget(a)} />}
+                    <AttachmentActions
+                      onCrop={CROPPABLE_TYPES.has(a.mimeType) ? () => setCropTarget(a) : null}
+                      onRemove={() => removeAttachment(a)}
+                      busy={removingId === a.id}
+                    />
                     <img src={a.url} alt={a.filename} />
                   </a>
                 ))
@@ -979,6 +1028,8 @@ ${backlinksText}
                   key={att.id}
                   att={att}
                   onCrop={CROPPABLE_TYPES.has(att.mimeType) ? () => setCropTarget(att) : null}
+                  onRemove={() => removeAttachment(att)}
+                  busy={removingId === att.id}
                 />
               ))}
             </div>

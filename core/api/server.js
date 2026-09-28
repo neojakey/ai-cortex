@@ -19,6 +19,7 @@ import { projectService } from '../services/projectService.js';
 import { backupService } from '../services/backupService.js';
 import { importGooglePhoto, classifyGooglePhotosUrl, GooglePhotosImportError } from '../services/googlePhotosImport.js';
 import { cropAttachment, PhotoCropError } from '../services/photoCrop.js';
+import { removeAttachment, AttachmentRemovalError } from '../services/attachmentRemoval.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -571,6 +572,25 @@ app.post('/api/attachments/:id/crop', async (req, res) => {
     res.status(201).json(result);
   } catch (err) {
     if (err instanceof PhotoCropError) return res.status(err.status).json({ error: err.message });
+    sendServiceError(res, err, 500);
+  }
+});
+
+// Remove an attachment from its note for good, taking its links out of the note's text
+// (see attachmentRemoval.js). Body: { expectedRevision } of the note.
+app.post('/api/attachments/:id/remove', async (req, res) => {
+  try {
+    const result = await removeAttachment({
+      attachmentId: req.params.id,
+      expectedRevision: (req.body || {}).expectedRevision,
+      attachments: attachmentService,
+      notes: noteService,
+      pool,
+      thumbsDir: path.resolve(attachmentService.storageDir, '..', 'thumbs')
+    });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof AttachmentRemovalError) return res.status(err.status).json({ error: err.message });
     sendServiceError(res, err, 500);
   }
 });
