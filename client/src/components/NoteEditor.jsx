@@ -23,12 +23,14 @@ import {
   ChevronLeft,
   ChevronRight,
   CalendarDays,
-  AlertCircle
+  AlertCircle,
+  Crop
 } from 'lucide-react';
 import { renderNoteMarkdown, WIKILINK_PREFIX } from '../lib/renderMarkdown.js';
 import { getDefaultThumbSize } from '../lib/prefs.js';
 import { createSaveCoordinator } from '../lib/saveCoordinator.js';
 import { draftStorage, shouldResumeDraft, shouldPersistEdits, purgeLegacyDrafts } from '../lib/draftStorage.js';
+import CropModal from './CropModal.jsx';
 
 // Once per browser, before any note loads: drop drafts written before the note-switch fix.
 purgeLegacyDrafts();
@@ -52,6 +54,9 @@ function noteFields(n) {
 const GOOGLE_PHOTOS_SHARE_LINK = /^https:\/\/(photos\.app\.goo\.gl\/[\w-]+\/?|photos\.google\.com\/(share\/\S+|(u\/\d+\/)?photo\/\S+))$/;
 
 // localStorage can throw (private mode, blocked site data); never let that break the app.
+// Photo types the server can crop (see CROPPABLE_TYPES in core/services/photoCrop.js).
+const CROPPABLE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
 const viewModeStorage = {
   get(key) {
     try { return localStorage.getItem(key); } catch { return null; }
@@ -61,7 +66,21 @@ const viewModeStorage = {
   }
 };
 
-function AttachmentThumb({ att }) {
+function CropButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      className="crop-btn"
+      title="Crop to a square"
+      aria-label="Crop to a square"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}
+    >
+      <Crop size={14} />
+    </button>
+  );
+}
+
+function AttachmentThumb({ att, onCrop }) {
   // 0 = resized preview from the server, 1 = the original file, 2 = icon only
   const [stage, setStage] = useState(0);
   const isImage = (att.mimeType || '').startsWith('image/');
@@ -71,6 +90,7 @@ function AttachmentThumb({ att }) {
   return (
     <a className="attachment-card" href={att.url} target="_blank" rel="noreferrer" title={att.filename}>
       <div className="attachment-thumb">
+        {onCrop && <CropButton onClick={onCrop} />}
         {src ? (
           <img key={src} src={src} alt={att.filename} loading="lazy" onError={() => setStage((s) => s + 1)} />
         ) : (
@@ -134,6 +154,7 @@ export default function NoteEditor({
     });
   }
   const [isUploading, setIsUploading] = useState(false);
+  const [cropTarget, setCropTarget] = useState(null); // the attachment open in the crop window
   const [viewMode, setViewMode] = useState(() => viewModeStorage.get('ai_cortex_view_mode') || 'read');
   const [thumbSize, setThumbSize] = useState(getDefaultThumbSize);
   const [fullWidth, setFullWidth] = useState(() => viewModeStorage.get('ai_cortex_full_width') === 'true');
@@ -181,6 +202,7 @@ export default function NoteEditor({
     setRefreshState('idle');
     setShowWikilinks(false);
     setThumbSize(getDefaultThumbSize());
+    setCropTarget(null);
   }, [note?.id]);
 
   const isDirty = !!note && (
@@ -485,6 +507,39 @@ ${backlinksText}
       alert(err.message);
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  // Save a square crop of a photo (CropModal picks it, core/services/photoCrop.js does it).
+  // Unsaved typing is saved first, so the server repoints the note's text on exactly what's
+  // on screen, and the note's revision is sent so a change made elsewhere meanwhile is a
+  // conflict rather than being overwritten. Throws to keep the window open with the error.
+  const saveCrop = async (square) => {
+    const noteId = note.id;
+    const attachmentId = cropTarget.id;
+    await saveNow();
+    for (let i = 0; i < 100 && saveRef.current.state.status === 'saving'; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (saveRef.current.state.status !== 'idle') {
+      throw new Error("Your note couldn't be saved, so the photo wasn't cropped. Fix that first, then try again.");
+    }
+
+    const res = await fetch(`/api/attachments/${attachmentId}/crop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...square, expectedRevision: saveRef.current.baseRevision })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.code === 'REVISION_CONFLICT'
+        ? 'This note changed somewhere else. Close this, reload the note and try again.'
+        : data.error || `Could not crop the photo (${res.status})`);
+    }
+
+    setCropTarget(null);
+    if (latestRef.current.note?.id === noteId && latestRef.current.loadedNoteId === noteId) {
+      await refreshNow({ skipConfirm: true });
     }
   };
 
@@ -881,6 +936,7 @@ ${backlinksText}
               {imageAttachments.length > 0 ? (
                 imageAttachments.map((a) => (
                   <a key={a.id} className="daily-photo" href={a.url} target="_blank" rel="noreferrer" title={a.filename}>
+                    {CROPPABLE_TYPES.has(a.mimeType) && <CropButton onClick={() => setCropTarget(a)} />}
                     <img src={a.url} alt={a.filename} />
                   </a>
                 ))
@@ -919,7 +975,11 @@ ${backlinksText}
             </div>
             <div className={`attachment-grid size-${thumbSize}`}>
               {gridAttachments.map((att) => (
-                <AttachmentThumb key={att.id} att={att} />
+                <AttachmentThumb
+                  key={att.id}
+                  att={att}
+                  onCrop={CROPPABLE_TYPES.has(att.mimeType) ? () => setCropTarget(att) : null}
+                />
               ))}
             </div>
           </div>
@@ -954,6 +1014,15 @@ ${backlinksText}
           )}
         </div>
       </div>
+
+      {cropTarget && (
+        <CropModal
+          key={cropTarget.id}
+          attachment={cropTarget}
+          onCancel={() => setCropTarget(null)}
+          onSave={saveCrop}
+        />
+      )}
     </div>
   );
 }

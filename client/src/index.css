@@ -1365,6 +1365,73 @@ button, input, textarea, select {
   color: var(--text-main);
 }
 
+/* Crop to a square: the button on a photo, and the crop window */
+.daily-photo,
+.attachment-thumb { position: relative; }
+.crop-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+.daily-photo:hover .crop-btn,
+.attachment-card:hover .crop-btn,
+.crop-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .crop-btn { opacity: 1; } }
+
+.crop-card { max-width: 900px; }
+.crop-stage {
+  position: relative;
+  align-self: center;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  line-height: 0;
+  touch-action: none;
+  user-select: none;
+}
+.crop-stage img {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+}
+.crop-square {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  cursor: move;
+}
+.crop-size {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.crop-size input { flex: 1; }
+.crop-size-value { min-width: 64px; text-align: right; color: var(--text-muted); }
+.crop-note,
+.crop-error { font-size: 13px; }
+.crop-note { color: var(--text-muted); }
+.crop-error { color: var(--accent-rose); }
+.crop-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 /* Previous / next day on daily notes */
 .daily-nav {
   display: flex;

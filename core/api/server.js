@@ -18,6 +18,7 @@ import { exportService } from '../services/exportService.js';
 import { projectService } from '../services/projectService.js';
 import { backupService } from '../services/backupService.js';
 import { importGooglePhoto, classifyGooglePhotosUrl, GooglePhotosImportError } from '../services/googlePhotosImport.js';
+import { cropAttachment, PhotoCropError } from '../services/photoCrop.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
@@ -550,6 +551,27 @@ app.get('/api/attachments/:id/thumb', async (req, res) => {
     fs.createReadStream(out).pipe(res);
   } catch {
     res.status(404).send('No preview');
+  }
+});
+
+// Crop an image attachment to a square, saved as a new attachment (see photoCrop.js).
+// Body: { x, y, size } in the photo's upright pixels, plus the note's expectedRevision.
+app.post('/api/attachments/:id/crop', async (req, res) => {
+  try {
+    const { x, y, size, expectedRevision } = req.body || {};
+    const result = await cropAttachment({
+      attachmentId: req.params.id,
+      rect: { x, y, size },
+      expectedRevision,
+      magickBin,
+      attachments: attachmentService,
+      notes: noteService,
+      pool
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    if (err instanceof PhotoCropError) return res.status(err.status).json({ error: err.message });
+    sendServiceError(res, err, 500);
   }
 });
 
