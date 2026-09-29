@@ -15,6 +15,7 @@ import {
   Camera,
   BookOpen
 } from 'lucide-react';
+import { localDateString } from '../lib/dates.js';
 
 // Collapsed-by-default filter accordion, shared by the Projects and Hashtags
 // sections — auto-expands whenever its own filter is the active one, so the
@@ -102,6 +103,10 @@ export default function Sidebar({
   health,
   width
 }) {
+  // Today's daily note is opened in the note editor, so it lights up "Today's Journal"
+  // instead of "Notes Editor".
+  const activeNote = activeView === 'document' ? notes.find((n) => n.id === activeNoteId) : null;
+  const onTodaysJournal = !!activeNote && activeNote.title === `Daily: ${localDateString()}`;
   return (
     <aside className="sidebar" style={width ? { width, minWidth: width } : undefined}>
       {/* Brand Header */}
@@ -141,7 +146,7 @@ export default function Sidebar({
       {/* Navigation Views */}
       <div className="nav-views">
         <button 
-          className={`nav-item ${activeView === 'document' ? 'active' : ''}`}
+          className={`nav-item ${activeView === 'document' && !onTodaysJournal ? 'active' : ''}`}
           onClick={() => onChangeView('document')}
         >
           <FileText size={15} />
@@ -149,7 +154,7 @@ export default function Sidebar({
         </button>
 
         <button 
-          className="nav-item"
+          className={`nav-item ${onTodaysJournal ? 'active' : ''}`}
           onClick={onOpenDaily}
         >
           <Calendar size={15} />
