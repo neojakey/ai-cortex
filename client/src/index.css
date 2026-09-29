@@ -960,12 +960,19 @@ button, input, textarea, select {
   padding-left: 26px;
 }
 .note-rendered li { margin: 4px 0; }
+/* The checkbox hangs in the left margin and the text flows normally beside it. Not flex:
+   that made every text run, code chip and bold word its own column. */
 .note-rendered li.task-list-item {
   list-style: none;
+  position: relative;
   margin-left: -22px;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+  padding-left: 22px;
+}
+.note-rendered li.task-list-item > input[type="checkbox"] {
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  margin: 0;
 }
 .note-rendered input[type="checkbox"] {
   accent-color: var(--accent-primary);
