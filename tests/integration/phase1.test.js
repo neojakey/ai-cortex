@@ -10,6 +10,7 @@ import { pool } from '../../core/db/pool.js';
 import { noteService } from '../../core/services/noteService.js';
 import { AttachmentService, attachmentService } from '../../core/services/attachmentService.js';
 import { exportService } from '../../core/services/exportService.js';
+import { retryOnDeadlock } from '../../core/db/retry.js';
 
 const suffix = crypto.randomUUID().slice(0, 8);
 const uniq = (label) => `P1 ${label} ${suffix}`;
@@ -138,8 +139,9 @@ function buildZip(files) {
 }
 
 async function cleanupImported(titles, attachmentNames = []) {
+  // Raw cleanup outside the app's own saves, so it retries deadlocks itself.
   for (const title of titles) {
-    await pool.query(`DELETE FROM notes WHERE title = ?`, [title]);
+    await retryOnDeadlock(() => pool.query(`DELETE FROM notes WHERE title = ?`, [title]), { label: 'test cleanup' });
   }
   for (const name of attachmentNames) {
     const [rows] = await pool.query(`SELECT id FROM attachments WHERE filename = ?`, [name]);

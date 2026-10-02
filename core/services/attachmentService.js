@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pool } from '../db/pool.js';
+import { retryOnDeadlock } from '../db/retry.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,11 +60,15 @@ export class AttachmentService {
     const attachmentId = id || crypto.randomUUID();
     const fileSize = buffer.length;
 
-    await conn.query(
+    // On its own (autocommit) this one statement is retried if MySQL cancels it to break a
+    // deadlock; the file is already on disk, stored by content, so only the row repeats.
+    // Inside a caller's transaction only that transaction can be retried.
+    const insert = () => conn.query(
       `INSERT INTO attachments (id, note_id, filename, mime_type, file_size, sha256, storage_path)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [attachmentId, noteId, filename, mimeType || 'application/octet-stream', fileSize, sha256, relativePath]
     );
+    await (conn === pool ? retryOnDeadlock(insert, { label: 'saveAttachment' }) : insert());
 
     return {
       id: attachmentId,

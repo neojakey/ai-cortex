@@ -3,6 +3,7 @@ import { pool } from '../db/pool.js';
 import { slugify, extractWikilinks, extractHashtags, extractTasks, markdownToPlaintext, toBooleanFulltextQuery } from './parser.js';
 import { projectService } from './projectService.js';
 import { journalTitleSql } from './journalTitle.js';
+import { retryOnDeadlock } from '../db/retry.js';
 
 function normalizeCustomTags(customTags) {
   return (Array.isArray(customTags) ? customTags : [])
@@ -52,7 +53,13 @@ export class NoteService {
   /**
    * Create a new note
    */
-  async createNote({
+  async createNote(args) {
+    // Inside a caller's transaction (vault import) only that transaction can be retried.
+    if (args?.conn) return this._createNoteOnce(args);
+    return retryOnDeadlock(() => this._createNoteOnce(args), { label: 'createNote' });
+  }
+
+  async _createNoteOnce({
     title,
     content = '',
     status = 'active',
@@ -189,7 +196,11 @@ export class NoteService {
    *   external replace paths so two writers can no longer silently clobber each other.
    * @throws {Error} code NOT_FOUND | REVISION_CONFLICT | INVALID_ARGUMENT | EXPECTED_REVISION_REQUIRED
    */
-  async updateNote(id, {
+  async updateNote(id, changes) {
+    return retryOnDeadlock(() => this._updateNoteOnce(id, changes), { label: 'updateNote' });
+  }
+
+  async _updateNoteOnce(id, {
     title,
     content,
     appendContent,
@@ -467,7 +478,11 @@ export class NoteService {
    * @returns {Promise<{id: string, status: string, revision: number}|null>} null if no such note
    * @throws {Error} code REVISION_CONFLICT | INVALID_ARGUMENT
    */
-  async setStatus(id, status, { expectedRevision } = {}) {
+  async setStatus(id, status, options = {}) {
+    return retryOnDeadlock(() => this._setStatusOnce(id, status, options), { label: 'setStatus' });
+  }
+
+  async _setStatusOnce(id, status, { expectedRevision } = {}) {
     if (status === undefined) throw codedError('INVALID_ARGUMENT', 'status is required');
     assertValidStatus(status);
     const expected = parseExpectedRevision(expectedRevision);
@@ -869,14 +884,16 @@ export class NoteService {
     if (permanent) {
       // Only this note's own tags can become orphaned by deleting it (ON DELETE CASCADE
       // removes its note_tags rows), so check just those instead of the whole tags table.
+      // Two autocommit statements, so each is retried on its own: retrying both together
+      // after the first had succeeded would find no note and skip the tag cleanup.
       const [tagRows] = await pool.query(`SELECT tag_id FROM note_tags WHERE note_id = ?`, [id]);
-      const [res] = await pool.query(`DELETE FROM notes WHERE id = ?`, [id]);
+      const [res] = await retryOnDeadlock(() => pool.query(`DELETE FROM notes WHERE id = ?`, [id]), { label: 'deleteNote' });
       if (res.affectedRows > 0 && tagRows.length) {
-        await pool.query(
+        await retryOnDeadlock(() => pool.query(
           `DELETE t FROM tags t
            WHERE t.id IN (?) AND NOT EXISTS (SELECT 1 FROM note_tags nt WHERE nt.tag_id = t.id)`,
           [tagRows.map((r) => r.tag_id)]
-        );
+        ), { label: 'deleteNote tag cleanup' });
       }
       return res.affectedRows > 0;
     } else {

@@ -10,6 +10,7 @@ import { noteService } from './noteService.js';
 import { attachmentService } from './attachmentService.js';
 import { projectService } from './projectService.js';
 import { markdownToPlaintext } from './parser.js';
+import { retryOnDeadlock } from '../db/retry.js';
 
 // Guards against decompression bombs on import
 const MAX_ZIP_ENTRIES = 5000;
@@ -257,157 +258,163 @@ export class ExportService {
       }
     }
 
-    // Categorize entries up front: markdown notes, and every attachments/* file by its
-    // basename. Notes are processed first and "claim" the attachment files their own
-    // frontmatter lists; whatever's left over afterward imports unassociated, exactly as
-    // a vault with no attachments: field always has.
-    const mdEntries = entries.filter((e) => !e.isDirectory && e.entryName.endsWith('.md'));
-    const attachmentEntries = new Map(); // basename -> zip entry
-    for (const e of entries) {
-      if (e.isDirectory) continue;
-      if (e.entryName.startsWith('attachments/')) {
-        attachmentEntries.set(path.basename(e.entryName), e);
+    // One attempt: everything from here to the commit runs again from scratch if MySQL
+    // cancels the transaction to break a deadlock (see core/db/retry.js). The claimed-file
+    // map and the counts are rebuilt each time, so a retry never double-counts.
+    const importOnce = async () => {
+      // Categorize entries up front: markdown notes, and every attachments/* file by its
+      // basename. Notes are processed first and "claim" the attachment files their own
+      // frontmatter lists; whatever's left over afterward imports unassociated, exactly as
+      // a vault with no attachments: field always has.
+      const mdEntries = entries.filter((e) => !e.isDirectory && e.entryName.endsWith('.md'));
+      const attachmentEntries = new Map(); // basename -> zip entry
+      for (const e of entries) {
+        if (e.isDirectory) continue;
+        if (e.entryName.startsWith('attachments/')) {
+          attachmentEntries.set(path.basename(e.entryName), e);
+        }
       }
-    }
 
-    const result = { importedNotes: 0, skippedNotes: 0, importedAttachments: 0, skippedAttachments: 0 };
-    const savedAttachmentIds = [];
-    const conn = await pool.getConnection();
+      const result = { importedNotes: 0, skippedNotes: 0, importedAttachments: 0, skippedAttachments: 0 };
+      const savedAttachmentIds = [];
+      const conn = await pool.getConnection();
 
-    try {
-      await conn.beginTransaction();
+      try {
+        await conn.beginTransaction();
 
-      for (const entry of mdEntries) {
-        const text = entry.getData().toString('utf8');
-        const parsed = this._parseVaultNote(text, path.basename(entry.entryName, '.md'));
+        for (const entry of mdEntries) {
+          const text = entry.getData().toString('utf8');
+          const parsed = this._parseVaultNote(text, path.basename(entry.entryName, '.md'));
 
-        const [sameId] = parsed.id
-          ? await conn.query(`SELECT id FROM notes WHERE id = ?`, [parsed.id])
-          : [[]];
-        const [sameContent] = sameId.length
-          ? [[]]
-          : await conn.query(
-              `SELECT id FROM notes WHERE title = ? AND content = ? LIMIT 1`,
-              [parsed.title.trim(), parsed.content]
+          const [sameId] = parsed.id
+            ? await conn.query(`SELECT id FROM notes WHERE id = ?`, [parsed.id])
+            : [[]];
+          const [sameContent] = sameId.length
+            ? [[]]
+            : await conn.query(
+                `SELECT id FROM notes WHERE title = ? AND content = ? LIMIT 1`,
+                [parsed.title.trim(), parsed.content]
+              );
+          if (sameId.length || sameContent.length) {
+            result.skippedNotes++;
+            continue;
+          }
+
+          // Resolve the project slug to its current name in this database; if the manifest
+          // didn't cover it (a hand-edited or foreign vault), fall back to the slug itself
+          // as a best-effort project name.
+          let projectName;
+          if (parsed.project) {
+            const resolved = await projectService.getBySlugOrId(parsed.project);
+            projectName = resolved ? resolved.name : parsed.project;
+          }
+
+          // Generated here (not left to createNote) so it's guaranteed to match the id the
+          // attachments below are saved against — they need the note to already exist
+          // (note_id is a foreign key), so the note is created first, with its content
+          // still holding the portable attachments/<filename> paths, and patched below
+          // once each referenced attachment has a real id to rewrite them to.
+          const noteId = parsed.id || crypto.randomUUID();
+
+          await noteService.createNote({
+            id: noteId,
+            title: parsed.title,
+            content: parsed.content,
+            status: parsed.status,
+            dueDate: parsed.dueDate,
+            properties: parsed.properties,
+            customTags: parsed.tags,
+            project: projectName,
+            conn
+          });
+          result.importedNotes++;
+
+          let content = parsed.content;
+          let contentChanged = false;
+          for (const filename of parsed.attachments) {
+            const attEntry = attachmentEntries.get(filename);
+            if (!attEntry) continue; // listed but not actually in the zip; nothing to link
+            attachmentEntries.delete(filename); // claimed, whether new or a dedup match
+
+            const buffer = attEntry.getData();
+            const sha256 = attachmentService.computeHash(buffer);
+            const [existing] = await conn.query(
+              `SELECT id FROM attachments WHERE sha256 = ? AND filename = ? LIMIT 1`,
+              [sha256, filename]
             );
-        if (sameId.length || sameContent.length) {
-          result.skippedNotes++;
-          continue;
+
+            let attachmentId;
+            if (existing.length) {
+              attachmentId = existing[0].id; // reuse; ownership is never reassigned
+              result.skippedAttachments++;
+            } else {
+              const saved = await attachmentService.saveAttachment({
+                noteId,
+                filename,
+                mimeType: mime.lookup(filename) || 'application/octet-stream',
+                buffer,
+                conn
+              });
+              savedAttachmentIds.push(saved.id);
+              attachmentId = saved.id;
+              result.importedAttachments++;
+            }
+
+            if (content.includes(`attachments/${filename}`)) {
+              content = content.split(`attachments/${filename}`).join(`/api/attachments/${attachmentId}/file`);
+              contentChanged = true;
+            }
+          }
+
+          // A direct patch, not noteService.updateNote: this is finishing the note's
+          // initial creation (still inside the same transaction, before anyone could have
+          // read it), not an edit, so it shouldn't bump the revision or snapshot a version.
+          // Wikilinks/hashtags were already correctly extracted from createNote's own copy
+          // of this content, since attachment-path substitution can't affect [[...]] or #tags.
+          if (contentChanged) {
+            await conn.query(
+              `UPDATE notes SET content = ?, content_text = ? WHERE id = ?`,
+              [content, markdownToPlaintext(content), noteId]
+            );
+          }
         }
 
-        // Resolve the project slug to its current name in this database; if the manifest
-        // didn't cover it (a hand-edited or foreign vault), fall back to the slug itself
-        // as a best-effort project name.
-        let projectName;
-        if (parsed.project) {
-          const resolved = await projectService.getBySlugOrId(parsed.project);
-          projectName = resolved ? resolved.name : parsed.project;
-        }
-
-        // Generated here (not left to createNote) so it's guaranteed to match the id the
-        // attachments below are saved against — they need the note to already exist
-        // (note_id is a foreign key), so the note is created first, with its content
-        // still holding the portable attachments/<filename> paths, and patched below
-        // once each referenced attachment has a real id to rewrite them to.
-        const noteId = parsed.id || crypto.randomUUID();
-
-        await noteService.createNote({
-          id: noteId,
-          title: parsed.title,
-          content: parsed.content,
-          status: parsed.status,
-          dueDate: parsed.dueDate,
-          properties: parsed.properties,
-          customTags: parsed.tags,
-          project: projectName,
-          conn
-        });
-        result.importedNotes++;
-
-        let content = parsed.content;
-        let contentChanged = false;
-        for (const filename of parsed.attachments) {
-          const attEntry = attachmentEntries.get(filename);
-          if (!attEntry) continue; // listed but not actually in the zip; nothing to link
-          attachmentEntries.delete(filename); // claimed, whether new or a dedup match
-
-          const buffer = attEntry.getData();
-          const sha256 = attachmentService.computeHash(buffer);
+        // Whatever's left in attachmentEntries wasn't claimed by any note's frontmatter
+        // (a plain vault, or a stray file): import unassociated, exactly as before.
+        for (const [filename, entry] of attachmentEntries) {
+          const buffer = entry.getData();
           const [existing] = await conn.query(
             `SELECT id FROM attachments WHERE sha256 = ? AND filename = ? LIMIT 1`,
-            [sha256, filename]
+            [attachmentService.computeHash(buffer), filename]
           );
-
-          let attachmentId;
           if (existing.length) {
-            attachmentId = existing[0].id; // reuse; ownership is never reassigned
             result.skippedAttachments++;
-          } else {
-            const saved = await attachmentService.saveAttachment({
-              noteId,
-              filename,
-              mimeType: mime.lookup(filename) || 'application/octet-stream',
-              buffer,
-              conn
-            });
-            savedAttachmentIds.push(saved.id);
-            attachmentId = saved.id;
-            result.importedAttachments++;
+            continue;
           }
 
-          if (content.includes(`attachments/${filename}`)) {
-            content = content.split(`attachments/${filename}`).join(`/api/attachments/${attachmentId}/file`);
-            contentChanged = true;
-          }
+          const saved = await attachmentService.saveAttachment({
+            filename,
+            mimeType: mime.lookup(filename) || 'application/octet-stream',
+            buffer,
+            conn
+          });
+          savedAttachmentIds.push(saved.id);
+          result.importedAttachments++;
         }
 
-        // A direct patch, not noteService.updateNote: this is finishing the note's
-        // initial creation (still inside the same transaction, before anyone could have
-        // read it), not an edit, so it shouldn't bump the revision or snapshot a version.
-        // Wikilinks/hashtags were already correctly extracted from createNote's own copy
-        // of this content, since attachment-path substitution can't affect [[...]] or #tags.
-        if (contentChanged) {
-          await conn.query(
-            `UPDATE notes SET content = ?, content_text = ? WHERE id = ?`,
-            [content, markdownToPlaintext(content), noteId]
-          );
+        await conn.commit();
+        return result;
+      } catch (err) {
+        await conn.rollback();
+        for (const attachmentId of savedAttachmentIds) {
+          await attachmentService.deleteAttachment(attachmentId).catch(() => {});
         }
+        throw err;
+      } finally {
+        conn.release();
       }
-
-      // Whatever's left in attachmentEntries wasn't claimed by any note's frontmatter
-      // (a plain vault, or a stray file): import unassociated, exactly as before.
-      for (const [filename, entry] of attachmentEntries) {
-        const buffer = entry.getData();
-        const [existing] = await conn.query(
-          `SELECT id FROM attachments WHERE sha256 = ? AND filename = ? LIMIT 1`,
-          [attachmentService.computeHash(buffer), filename]
-        );
-        if (existing.length) {
-          result.skippedAttachments++;
-          continue;
-        }
-
-        const saved = await attachmentService.saveAttachment({
-          filename,
-          mimeType: mime.lookup(filename) || 'application/octet-stream',
-          buffer,
-          conn
-        });
-        savedAttachmentIds.push(saved.id);
-        result.importedAttachments++;
-      }
-
-      await conn.commit();
-      return result;
-    } catch (err) {
-      await conn.rollback();
-      for (const attachmentId of savedAttachmentIds) {
-        await attachmentService.deleteAttachment(attachmentId).catch(() => {});
-      }
-      throw err;
-    } finally {
-      conn.release();
-    }
+    };
+    return retryOnDeadlock(importOnce, { label: 'importVaultFromZip' });
   }
 }
 
