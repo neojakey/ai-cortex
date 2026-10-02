@@ -949,7 +949,8 @@ button, input, textarea, select {
   margin: 28px 0 12px;
 }
 .note-rendered h1 { font-size: 28px; }
-.note-rendered h2 { font-size: 22px; }
+/* ## headings in the chosen palette's accent colour (follows the theme and palette). */
+.note-rendered h2 { font-size: 22px; color: var(--accent-primary); }
 .note-rendered h3 { font-size: 18px; }
 .note-rendered p { margin: 0 0 16px; }
 .note-rendered table {
