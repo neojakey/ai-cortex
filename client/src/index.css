@@ -474,6 +474,8 @@ button, input, textarea, select {
   border-radius: var(--radius-xs);
   border: 1px solid var(--border-dim);
 }
+/* "+2" when a note has more tags than the note list shows; hover for the rest */
+.badge-tag.badge-tag-more { color: var(--text-muted); cursor: default; }
 
 .sidebar-footer {
   padding: 14px 16px;

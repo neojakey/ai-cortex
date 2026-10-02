@@ -239,6 +239,11 @@ export default function Sidebar({
               {note.tags && note.tags.slice(0, 2).map((t) => (
                 <span key={t} className="badge-tag">#{t}</span>
               ))}
+              {note.tags && note.tags.length > 2 && (
+                <span className="badge-tag badge-tag-more" title={note.tags.slice(2).map((t) => `#${t}`).join(' ')}>
+                  +{note.tags.length - 2}
+                </span>
+              )}
             </div>
           </div>
         ))}

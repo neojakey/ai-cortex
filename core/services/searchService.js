@@ -74,7 +74,8 @@ export class SearchService {
         `SELECT nt.note_id, t.name
          FROM note_tags nt
          JOIN tags t ON nt.tag_id = t.id
-         WHERE nt.note_id IN (?)`,
+         WHERE nt.note_id IN (?)
+         ORDER BY t.name ASC`,
         [noteIds]
       );
       for (const t of tagRows) {
