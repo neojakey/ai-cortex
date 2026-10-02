@@ -65,6 +65,13 @@ npm test
 ```
 Tests use their own `ai_cortex_test` database on the same MySQL server, plus a temp folder for attachments. A `pretest` step creates and migrates it automatically (your DB user needs permission to create databases). The test helper refuses to run against any database whose name doesn't end in `_test`, whatever your `.env` says, so your real notes are never touched. Set `TEST_DB_NAME` to use a different test database.
 
+**Browser checks** drive the real editor in Chromium (crop and remove, the Google Photos dialog, journal titles, project tags, the sidebar, note layout):
+```bash
+npm run test:browser                 # all of them
+npm run test:browser -- journal      # only checks whose file name contains "journal"
+```
+They start their own copy of the app on the test database (ports 3011 and 5174) and stop it afterwards, and never contact Google. They use the Chromium that Playwright installs in `~/.cache/ms-playwright` (or set `CHROMIUM_PATH`). The checks live in `tests/browser/*.check.js`.
+
 ### 5. Start AI-Cortex
 
 **Development** (backend + Vite dev client with hot reload):

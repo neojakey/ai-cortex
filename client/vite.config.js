@@ -8,7 +8,8 @@ export default defineConfig({
     host: '127.0.0.1',
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:3001',
+        // AI_CORTEX_API_URL lets the browser checks (tests/browser) point at their own API.
+        target: process.env.AI_CORTEX_API_URL || 'http://127.0.0.1:3001',
         changeOrigin: true
       }
     }
