@@ -1,6 +1,7 @@
 import { pool } from '../db/pool.js';
 import { toBooleanFulltextQuery } from './parser.js';
 import { projectService } from './projectService.js';
+import { journalTitleSql, JOURNAL_TITLE_PROPERTY } from './journalTitle.js';
 
 export class SearchService {
   /**
@@ -41,6 +42,7 @@ export class SearchService {
     const sql = `
       SELECT n.id, n.title, n.slug, n.status, n.due_date, n.updated_at,
              LEFT(n.content_text, 180) as snippet,
+             ${journalTitleSql('n')},
              MATCH(n.title, n.content_text) AGAINST(? IN BOOLEAN MODE)
                + IF(${tagExistsSql}, 5, 0) as score
       FROM notes n
@@ -49,6 +51,8 @@ export class SearchService {
           MATCH(n.title, n.content_text) AGAINST(? IN BOOLEAN MODE)
           OR n.title LIKE ?
           OR n.content LIKE ?
+          OR EXISTS (SELECT 1 FROM note_properties jp WHERE jp.note_id = n.id
+                     AND jp.property_name = '${JOURNAL_TITLE_PROPERTY}' AND jp.property_value LIKE ?)
           OR ${tagExistsSql}
         )
         ${projectClause}
@@ -56,7 +60,7 @@ export class SearchService {
       LIMIT ?
     `;
 
-    const params = [booleanQuery, exactTag, status, booleanQuery, likePattern, likePattern, exactTag];
+    const params = [booleanQuery, exactTag, status, booleanQuery, likePattern, likePattern, likePattern, exactTag];
     if (projectId) params.push(projectId);
     params.push(Number(limit));
 
@@ -88,7 +92,8 @@ export class SearchService {
       snippet: r.snippet || '',
       score: Number(r.score || 0),
       updatedAt: r.updated_at,
-      tags: tagsMap[r.id] || []
+      tags: tagsMap[r.id] || [],
+      journalTitle: r.journal_title || null
     }));
   }
 }

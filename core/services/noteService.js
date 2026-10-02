@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { pool } from '../db/pool.js';
 import { slugify, extractWikilinks, extractHashtags, extractTasks, markdownToPlaintext, toBooleanFulltextQuery } from './parser.js';
 import { projectService } from './projectService.js';
+import { journalTitleSql } from './journalTitle.js';
 
 function normalizeCustomTags(customTags) {
   return (Array.isArray(customTags) ? customTags : [])
@@ -580,7 +581,7 @@ export class NoteService {
 
     // 4. Backlinks (Incoming mentions from other notes)
     const [backlinkRows] = await db.query(
-      `SELECT n.id, n.title, n.slug, n.status, n.updated_at
+      `SELECT n.id, n.title, n.slug, n.status, n.updated_at, ${journalTitleSql('n')}
        FROM note_links nl
        JOIN notes n ON nl.source_note_id = n.id
        WHERE (nl.target_note_id = ? OR nl.target_slug = ?)
@@ -623,7 +624,8 @@ export class NoteService {
         title: r.title,
         slug: r.slug,
         status: r.status,
-        updatedAt: r.updated_at
+        updatedAt: r.updated_at,
+        journalTitle: r.journal_title || null
       })),
       attachments: attachmentRows.map((a) => ({
         id: a.id,
@@ -688,7 +690,8 @@ export class NoteService {
     const [rows] = await pool.query(
       `SELECT n.id, n.title, n.slug, n.status, n.due_date, n.created_at, n.updated_at, n.revision,
               LEFT(n.content_text, 160) as preview,
-              (SELECT COUNT(*) FROM note_links nl WHERE nl.target_note_id = n.id) as backlink_count
+              (SELECT COUNT(*) FROM note_links nl WHERE nl.target_note_id = n.id) as backlink_count,
+              ${journalTitleSql('n')}
        FROM notes n
        ${whereSql}
        ORDER BY n.${safeSortBy} ${safeSortOrder}
@@ -725,7 +728,8 @@ export class NoteService {
       backlinkCount: Number(r.backlink_count || 0),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
-      tags: noteTagsMap[r.id] || []
+      tags: noteTagsMap[r.id] || [],
+      journalTitle: r.journal_title || null
     }));
   }
 
@@ -827,8 +831,8 @@ export class NoteService {
    */
   async getTasks({ completed = null, limit = 200 } = {}) {
     const [rows] = await pool.query(
-      `SELECT id, title, slug, content, updated_at
-       FROM notes
+      `SELECT n.id, n.title, n.slug, n.content, n.updated_at, ${journalTitleSql('n')}
+       FROM notes n
        WHERE status = 'active'
          AND (content LIKE '%[ ]%' OR content LIKE '%[x]%' OR content LIKE '%[X]%')
        ORDER BY updated_at DESC
@@ -844,6 +848,7 @@ export class NoteService {
           allTasks.push({
             noteId: note.id,
             noteTitle: note.title,
+            noteJournalTitle: note.journal_title || null,
             noteSlug: note.slug,
             text: task.text,
             completed: task.completed,

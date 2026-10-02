@@ -122,7 +122,7 @@ export default function SearchPalette({ isOpen, onClose, onSelectNote }) {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500, fontSize: 14 }}>
                   <FileText size={15} color="#818cf8" />
-                  <span>{displayTitle(r.title)}</span>
+                  <span>{displayTitle(r.title, r.journalTitle)}</span>
                 </div>
                 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                   {new Date(r.updatedAt).toLocaleDateString()}

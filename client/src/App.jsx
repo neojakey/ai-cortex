@@ -287,7 +287,8 @@ export default function App() {
                   title: data.note.title,
                   status: data.note.status,
                   dueDate: data.note.dueDate,
-                  tags: data.note.tags
+                  tags: data.note.tags,
+                  journalTitle: data.note.properties?.journal_title ?? null
                 }
               : n
           )
@@ -531,7 +532,7 @@ function TrashView({ onRestoreNote }) {
             }}
           >
             <div>
-              <div style={{ fontWeight: 500, fontSize: 14 }}>{displayTitle(n.title)}</div>
+              <div style={{ fontWeight: 500, fontSize: 14 }}>{displayTitle(n.title, n.journalTitle)}</div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                 Deleted {new Date(n.updatedAt).toLocaleDateString()}
               </div>

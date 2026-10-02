@@ -33,14 +33,14 @@ import { createSaveCoordinator } from '../lib/saveCoordinator.js';
 import { draftStorage, shouldResumeDraft, shouldPersistEdits, purgeLegacyDrafts } from '../lib/draftStorage.js';
 import CropModal from './CropModal.jsx';
 import GooglePhotosModal from './GooglePhotosModal.jsx';
-import { displayTitle } from '../lib/noteTitle.js';
+import { displayTitle, savedJournalTitle, journalTitleSave } from '../lib/noteTitle.js';
 
 // Once per browser, before any note loads: drop drafts written before the note-switch fix.
 purgeLegacyDrafts();
 
 // The fields the editor saves, in one comparable shape (used to detect "nothing to save").
-function editorFields({ note, title, content, status, dueDate }) {
-  return { noteId: note ? note.id : null, title, content, status, dueDate: dueDate || null };
+function editorFields({ note, title, content, status, dueDate, journalTitle }) {
+  return { noteId: note ? note.id : null, title, content, status, dueDate: dueDate || null, journalTitle: journalTitle || '' };
 }
 function noteFields(n) {
   return {
@@ -48,7 +48,8 @@ function noteFields(n) {
     title: n.title || '',
     content: n.content || '',
     status: n.status || 'active',
-    dueDate: n.dueDate ? n.dueDate.slice(0, 10) : null
+    dueDate: n.dueDate ? n.dueDate.slice(0, 10) : null,
+    journalTitle: savedJournalTitle(n)
   };
 }
 
@@ -123,6 +124,8 @@ export default function NoteEditor({
   const [content, setContent] = useState(note?.content || '');
   const [status, setStatus] = useState(note?.status || 'active');
   const [dueDate, setDueDate] = useState(note?.dueDate ? note.dueDate.slice(0, 10) : '');
+  // A daily note's title ("Journal: <this> - <date>"); saved as the journal_title property.
+  const [journalTitle, setJournalTitle] = useState(savedJournalTitle(note));
   // Which note the fields above were loaded from. Lags `note` by one render on a switch;
   // nothing may be saved until they match (see shouldPersistEdits).
   const [loadedNoteId, setLoadedNoteId] = useState(null);
@@ -138,7 +141,7 @@ export default function NoteEditor({
   const saveTimerRef = useRef(null);
   const pendingFlushRef = useRef(null); // fields still waiting on the 600ms debounce, if any
   const latestRef = useRef({});
-  latestRef.current = { note, loadedNoteId, title, content, status, dueDate };
+  latestRef.current = { note, loadedNoteId, title, content, status, dueDate, journalTitle };
   const onUpdateNoteRef = useRef(onUpdateNote);
   onUpdateNoteRef.current = onUpdateNote;
 
@@ -149,8 +152,8 @@ export default function NoteEditor({
     saveRef.current = createSaveCoordinator({
       getFields: () => editorFields(latestRef.current),
       send: (fields, expectedRevision) => {
-        const { noteId, ...payload } = fields;
-        return onUpdateNoteRef.current(noteId, { ...payload, expectedRevision });
+        const { noteId, journalTitle: name, ...payload } = fields;
+        return onUpdateNoteRef.current(noteId, { ...payload, ...journalTitleSave(payload.title, name), expectedRevision });
       },
       onChange: setSaveState,
       onSaved: (saved) => {
@@ -201,6 +204,8 @@ export default function NoteEditor({
     setContent((resumeDraft ? draft.content : note.content) || '');
     setStatus((resumeDraft ? draft.status : note.status) || 'active');
     setDueDate((resumeDraft ? draft.dueDate : (note.dueDate ? note.dueDate.slice(0, 10) : '')) || '');
+    // Drafts from before the journal title existed have no journalTitle: keep the saved one.
+    setJournalTitle(resumeDraft && typeof draft.journalTitle === 'string' ? draft.journalTitle : savedJournalTitle(note));
     setLoadedNoteId(note.id);
     // The coordinator's baseline is always the server's own revision: if a draft was
     // resumed, it now looks "dirty" relative to that baseline, so the normal debounced
@@ -217,7 +222,8 @@ export default function NoteEditor({
     title !== note.title ||
     content !== note.content ||
     status !== note.status ||
-    dueDate !== (note.dueDate ? note.dueDate.slice(0, 10) : '')
+    dueDate !== (note.dueDate ? note.dueDate.slice(0, 10) : '') ||
+    journalTitle !== savedJournalTitle(note)
   );
 
   // 'saved' | 'unsaved' (edited, debounce pending) | 'saving' | 'error' | 'conflict'
@@ -257,11 +263,13 @@ export default function NoteEditor({
         fresh.title !== title ||
         fresh.content !== content ||
         fresh.status !== status ||
-        (fresh.dueDate ? fresh.dueDate.slice(0, 10) : '') !== dueDate;
+        (fresh.dueDate ? fresh.dueDate.slice(0, 10) : '') !== dueDate ||
+        savedJournalTitle(fresh) !== journalTitle;
       setTitle(fresh.title || '');
       setContent(fresh.content || '');
       setStatus(fresh.status || 'active');
       setDueDate(fresh.dueDate ? fresh.dueDate.slice(0, 10) : '');
+      setJournalTitle(savedJournalTitle(fresh));
       saveRef.current.reset(fresh.revision, noteFields(fresh));
       setRefreshState(changed ? 'updated' : 'current');
     } catch (err) {
@@ -282,16 +290,16 @@ export default function NoteEditor({
       pendingFlushRef.current = null;
       return;
     }
-    const pending = { noteId: note.id, revision: note.revision, title, content, status, dueDate };
+    const pending = { noteId: note.id, revision: note.revision, title, content, status, dueDate, journalTitle };
     pendingFlushRef.current = pending;
-    draftStorage.save(note.id, { baseRevision: note.revision, title, content, status, dueDate });
+    draftStorage.save(note.id, { baseRevision: note.revision, title, content, status, dueDate, journalTitle });
 
     saveTimerRef.current = setTimeout(() => {
       if (pendingFlushRef.current === pending) pendingFlushRef.current = null;
       saveNow();
     }, 600);
     return () => clearTimeout(saveTimerRef.current);
-  }, [title, content, status, dueDate, note, loadedNoteId, saveState.conflict]);
+  }, [title, content, status, dueDate, journalTitle, note, loadedNoteId, saveState.conflict]);
 
   // Flushes a still-pending debounce over the network when leaving this note (switch or
   // unmount) within the 600ms window, so a fast edit-then-navigate is never silently
@@ -309,6 +317,7 @@ export default function NoteEditor({
           content: pending.content,
           status: pending.status,
           dueDate: pending.dueDate || null,
+          ...journalTitleSave(pending.title, pending.journalTitle),
           expectedRevision: pending.revision
         }).catch(() => {});
       }
@@ -694,7 +703,7 @@ ${backlinksText}
                         onClick={() => insertWikilink(target.title)}
                       >
                         <span>⇄</span>
-                        <span>{displayTitle(target.title)}</span>
+                        <span>{displayTitle(target.title, target.journalTitle)}</span>
                       </div>
                     ))
                   ) : (
@@ -728,7 +737,7 @@ ${backlinksText}
       {/* Top Header Action Bar */}
       <div className="editor-header-bar">
         <div className="editor-breadcrumbs">
-          <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{displayTitle(title) || 'Untitled'}</span>
+          <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{displayTitle(title, journalTitle) || 'Untitled'}</span>
           <span style={{ opacity: 0.4 }}>•</span>
           <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{wordCount} words</span>
           <span style={{ opacity: 0.4 }}>•</span>
@@ -922,16 +931,31 @@ ${backlinksText}
           </div>
         )}
 
-        {/* Title Input. A daily note's title is how the app finds it, so it can't be
-            renamed here; it's shown as "Journal: …" (see lib/noteTitle.js). */}
-        <input
-          type="text"
-          className="note-title-input"
-          placeholder="Untitled Note"
-          value={isDailyNote ? displayTitle(title) : title}
-          readOnly={isDailyNote}
-          onChange={(e) => setTitle(e.target.value)}
-        />
+        {/* Title. A daily note's stored title is how the app finds it, so it never changes:
+            only its journal title is typed here, between "Journal:" and the date. */}
+        {isDailyNote ? (
+          <div className="journal-title-row">
+            <span className="journal-title-fixed">Journal:</span>
+            <input
+              type="text"
+              className="note-title-input journal-title-input"
+              placeholder="Add a title"
+              aria-label="Journal title"
+              size={Math.max(journalTitle.length, 'Add a title'.length)}
+              value={journalTitle}
+              onChange={(e) => setJournalTitle(e.target.value)}
+            />
+            <span className="journal-title-fixed">- {title.slice('Daily: '.length)}</span>
+          </div>
+        ) : (
+          <input
+            type="text"
+            className="note-title-input"
+            placeholder="Untitled Note"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        )}
 
         {isDailyNote && (
           <input
@@ -1030,7 +1054,7 @@ ${backlinksText}
                   className="backlink-card"
                   onClick={() => onSelectNote(b.id)}
                 >
-                  <div className="backlink-card-title">{displayTitle(b.title)}</div>
+                  <div className="backlink-card-title">{displayTitle(b.title, b.journalTitle)}</div>
                   <div className="backlink-card-meta">
                     <span>Updated {new Date(b.updatedAt).toLocaleDateString()}</span>
                   </div>

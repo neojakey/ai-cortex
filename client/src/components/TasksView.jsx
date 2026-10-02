@@ -139,7 +139,7 @@ export default function TasksView({ onSelectNote }) {
               }}
               title="Open origin note"
             >
-              <span>{displayTitle(t.noteTitle)}</span>
+              <span>{displayTitle(t.noteTitle, t.noteJournalTitle)}</span>
               <ExternalLink size={12} />
             </button>
           </div>

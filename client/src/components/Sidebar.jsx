@@ -228,7 +228,7 @@ export default function Sidebar({
               onSelectNote(note.id);
             }}
           >
-            <div className="note-item-title">{displayTitle(note.title) || 'Untitled'}</div>
+            <div className="note-item-title">{displayTitle(note.title, note.journalTitle) || 'Untitled'}</div>
             <div className="note-item-meta">
               <span>{new Date(note.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
               {note.backlinkCount > 0 && (

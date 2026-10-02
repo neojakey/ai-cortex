@@ -845,6 +845,34 @@ button, input, textarea, select {
   opacity: 0.5;
 }
 
+.note-title-input:read-only { cursor: default; }
+
+/* Daily note heading: "Journal:" [title box] "- date". The box grows with its text, and the
+   date wraps below a long title. */
+.journal-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.28em;
+  font-family: var(--font-display);
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  line-height: 1.2;
+  color: var(--text-main);
+}
+.journal-title-fixed { white-space: nowrap; }
+.journal-title-input {
+  width: auto;
+  min-width: 4ch;
+  max-width: 100%;
+  field-sizing: content;
+  padding: 0;
+  border-bottom: 2px dashed transparent;
+}
+.journal-title-input:hover,
+.journal-title-input:focus { border-bottom-color: var(--border-subtle); }
+
 /* Notion-style Properties Ribbon */
 .properties-bar {
   display: flex;
