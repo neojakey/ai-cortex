@@ -740,9 +740,8 @@ export class NoteService {
     const existing = await this.getNoteBySlug(slug);
     if (existing) return existing;
 
-    const defaultContent = `# ${title}
-
-## Log
+    // No "# title" heading: the page already shows the title above the text.
+    const defaultContent = `## Log
 - 
 
 ## Tasks

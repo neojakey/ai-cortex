@@ -33,6 +33,7 @@ import { createSaveCoordinator } from '../lib/saveCoordinator.js';
 import { draftStorage, shouldResumeDraft, shouldPersistEdits, purgeLegacyDrafts } from '../lib/draftStorage.js';
 import CropModal from './CropModal.jsx';
 import GooglePhotosModal from './GooglePhotosModal.jsx';
+import { displayTitle } from '../lib/noteTitle.js';
 
 // Once per browser, before any note loads: drop drafts written before the note-switch fix.
 purgeLegacyDrafts();
@@ -693,7 +694,7 @@ ${backlinksText}
                         onClick={() => insertWikilink(target.title)}
                       >
                         <span>⇄</span>
-                        <span>{target.title}</span>
+                        <span>{displayTitle(target.title)}</span>
                       </div>
                     ))
                   ) : (
@@ -727,7 +728,7 @@ ${backlinksText}
       {/* Top Header Action Bar */}
       <div className="editor-header-bar">
         <div className="editor-breadcrumbs">
-          <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{title || 'Untitled'}</span>
+          <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{displayTitle(title) || 'Untitled'}</span>
           <span style={{ opacity: 0.4 }}>•</span>
           <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{wordCount} words</span>
           <span style={{ opacity: 0.4 }}>•</span>
@@ -921,12 +922,14 @@ ${backlinksText}
           </div>
         )}
 
-        {/* Title Input */}
+        {/* Title Input. A daily note's title is how the app finds it, so it can't be
+            renamed here; it's shown as "Journal: …" (see lib/noteTitle.js). */}
         <input
           type="text"
           className="note-title-input"
           placeholder="Untitled Note"
-          value={title}
+          value={isDailyNote ? displayTitle(title) : title}
+          readOnly={isDailyNote}
           onChange={(e) => setTitle(e.target.value)}
         />
 
@@ -1027,7 +1030,7 @@ ${backlinksText}
                   className="backlink-card"
                   onClick={() => onSelectNote(b.id)}
                 >
-                  <div className="backlink-card-title">{b.title}</div>
+                  <div className="backlink-card-title">{displayTitle(b.title)}</div>
                   <div className="backlink-card-meta">
                     <span>Updated {new Date(b.updatedAt).toLocaleDateString()}</span>
                   </div>

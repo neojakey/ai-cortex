@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, ArrowUpDown, Tag, Calendar, ExternalLink } from 'lucide-react';
+import { displayTitle } from '../lib/noteTitle.js';
 
 export default function TableView({
   notes,
@@ -84,7 +85,7 @@ export default function TableView({
             <tr key={n.id} onClick={() => onSelectNote(n.id)} style={{ cursor: 'pointer' }}>
               <td style={{ fontWeight: 500 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>{n.title || 'Untitled'}</span>
+                  <span>{displayTitle(n.title) || 'Untitled'}</span>
                   <ExternalLink size={12} style={{ opacity: 0.4 }} />
                 </div>
               </td>

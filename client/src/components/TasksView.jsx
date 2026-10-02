@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckSquare, Square, Check, ArrowRight, ExternalLink } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { displayTitle } from '../lib/noteTitle.js';
 
 export default function TasksView({ onSelectNote }) {
   const [tasks, setTasks] = useState([]);
@@ -138,7 +139,7 @@ export default function TasksView({ onSelectNote }) {
               }}
               title="Open origin note"
             >
-              <span>{t.noteTitle}</span>
+              <span>{displayTitle(t.noteTitle)}</span>
               <ExternalLink size={12} />
             </button>
           </div>

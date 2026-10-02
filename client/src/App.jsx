@@ -11,6 +11,7 @@ import SettingsModal from './components/SettingsModal.jsx';
 import { Trash2, RotateCcw, XCircle } from 'lucide-react';
 
 import { applyColorScheme } from './theme/palettes.js';
+import { displayTitle } from './lib/noteTitle.js';
 
 // localStorage can throw (private mode, blocked site data); never let that break the app.
 const storage = {
@@ -530,7 +531,7 @@ function TrashView({ onRestoreNote }) {
             }}
           >
             <div>
-              <div style={{ fontWeight: 500, fontSize: 14 }}>{n.title}</div>
+              <div style={{ fontWeight: 500, fontSize: 14 }}>{displayTitle(n.title)}</div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                 Deleted {new Date(n.updatedAt).toLocaleDateString()}
               </div>
