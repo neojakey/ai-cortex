@@ -4,6 +4,27 @@ import { projectKeys, splitProjectLabel } from './projectLabels.js';
 
 marked.setOptions({ gfm: true, breaks: false });
 
+const escapeHtml = (text) => String(text)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+// Raw HTML in a note is shown as the text it is, never interpreted: notes are markdown,
+// and words in angle brackets (<title>, <person>, <input>) are almost always prose. Read as
+// HTML they vanished, and some (<title>, <textarea>) hid everything after them. Links in
+// brackets (<https://…>) are links, not HTML, so they're unaffected. DOMPurify below stays
+// as a second layer.
+marked.use({
+  renderer: {
+    html({ text, block }) {
+      const shown = escapeHtml(text);
+      return block ? `<p>${shown.replace(/\n/g, '<br>')}</p>\n` : shown;
+    }
+  }
+});
+
 // Mirrors core/services/parser.js's extractWikilinks regex, but rewrites
 // [[Target]] / [[Target|Alias]] into a plain markdown link so `marked`
 // renders it as a normal <a>, distinguished by a `wikilink:` URL scheme.
