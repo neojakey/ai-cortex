@@ -46,6 +46,14 @@ const colours = await page.evaluate(() => {
 check(colours.tag !== colours.accent, `tag colour differs from the accent (${colours.tag} vs ${colours.accent})`);
 await shot(page, 'project-labels');
 
+// A project heading in "Worked on with Claude" gets the same tag.
+const grouped = await createNote({ title: `Daily: ${testDate(1852)}`, content: '## Worked on with Claude\n\n### BolsaHotelera\n\n- fixed AUD-02\n\n### Not a project\n\n- x' });
+await openNote(page, grouped.id, '.note-rendered h3');
+const headings = await page.$$eval('.note-rendered h3', (hs) => hs.map((h) => ({ text: h.textContent, tagged: !!h.querySelector('.project-label') })));
+check(JSON.stringify(headings) === JSON.stringify([{ text: 'BolsaHotelera', tagged: true }, { text: 'Not a project', tagged: false }]), `project heading tagged, other heading not (${JSON.stringify(headings)})`);
+await shot(page, 'project-heading');
+seeds.push(grouped);
+
 await openNote(page, regular.id, '.note-rendered li');
 check(await page.locator('.note-rendered .project-label').count() === 0, 'a regular note gets no tags');
 const stored = await getNote(daily.id);

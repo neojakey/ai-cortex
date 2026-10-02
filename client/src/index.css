@@ -1037,6 +1037,7 @@ button, input, textarea, select {
   background: color-mix(in srgb, var(--project-hue) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--project-hue) 35%, transparent);
 }
+.note-rendered .project-heading .project-label { padding: 1px 10px; }
 @supports (color: oklch(from red l c h)) {
   .note-rendered .project-label { --project-hue: oklch(from var(--accent-primary) l c calc(h + 180)); }
 }

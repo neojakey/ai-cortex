@@ -1,6 +1,6 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { projectKeys, splitProjectLabel } from './projectLabels.js';
+import { projectKeys, splitProjectLabel, normalizeProjectName } from './projectLabels.js';
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -87,6 +87,7 @@ export function renderNoteMarkdown(content, { projectNames } = {}) {
   const keys = projectKeys(projectNames);
   if (keys.size > 0) {
     container.querySelectorAll('li').forEach((li) => tagProjectLabel(li, keys));
+    container.querySelectorAll('h2, h3, h4').forEach((h) => tagProjectHeading(h, keys));
   }
 
   return container.innerHTML;
@@ -99,6 +100,16 @@ function openingTextNode(li) {
   if (node && node.nodeType === Node.ELEMENT_NODE && node.matches('input[type="checkbox"]')) node = node.nextSibling;
   if (node && node.nodeType === Node.ELEMENT_NODE && node.tagName === 'P') node = node.firstChild;
   return node && node.nodeType === Node.TEXT_NODE ? node : null;
+}
+
+// A heading that is exactly a project name ("### BolsaHotelera") shows it as the tag.
+function tagProjectHeading(heading, keys) {
+  if (heading.children.length || !keys.has(normalizeProjectName(heading.textContent))) return;
+  const tag = document.createElement('span');
+  tag.className = 'project-label';
+  tag.textContent = heading.textContent.trim();
+  heading.replaceChildren(tag);
+  heading.classList.add('project-heading');
 }
 
 function tagProjectLabel(li, keys) {

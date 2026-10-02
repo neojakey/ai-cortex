@@ -113,3 +113,19 @@ test('reader: project tags still work next to raw HTML text', () => {
   assert.equal(el.querySelector('.project-label').textContent, 'bolsahotelera');
   assert.equal(text(el), 'bolsahotelera: check the <title> tag');
 });
+
+test('reader: a heading that is exactly a project name shows it as the tag', () => {
+  const el = render('## Worked on with Claude\n\n### BolsaHotelera\n\n- fixed AUD-02\n\n### ai cortex\n\n- shipped', { projectNames: ['BolsaHotelera', 'AI-Cortex'] });
+  const tags = [...el.querySelectorAll('h3.project-heading .project-label')].map((t) => t.textContent);
+  assert.deepEqual(tags, ['BolsaHotelera', 'ai cortex']);
+  assert.equal(el.querySelector('h2').classList.contains('project-heading'), false, 'other headings are left alone');
+});
+
+test('reader: a heading that only mentions a project, or has formatting, is left alone', () => {
+  const el = render('### BolsaHotelera launch plan\n\n### **BolsaHotelera**', { projectNames: ['BolsaHotelera'] });
+  assert.equal(el.querySelectorAll('.project-heading, .project-label').length, 0);
+});
+
+test('reader: without project names (regular notes) headings get no tag', () => {
+  assert.equal(render('### BolsaHotelera').querySelectorAll('.project-label').length, 0);
+});
