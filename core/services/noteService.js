@@ -759,22 +759,13 @@ export class NoteService {
     const existing = await this.getNoteBySlug(slug);
     if (existing) return existing;
 
-    // No "# title" heading: the page already shows the title above the text.
-    const defaultContent = `## Log
-- 
-
-## Tasks
-- [ ] 
-
-## Notes & Reflections
-#journal #${validDate.slice(0, 7)}
-`;
-
+    // A new entry starts empty: its title has its own box, and the month tag (2026-10),
+    // which the old template's "#journal #2026-10" line used to supply, is set directly.
     return this.createNote({
       title,
-      content: defaultContent,
+      content: '',
       status: 'active',
-      customTags: ['daily', 'journal']
+      customTags: ['daily', 'journal', validDate.slice(0, 7)]
     });
   }
 
