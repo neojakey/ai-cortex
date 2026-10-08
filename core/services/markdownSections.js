@@ -100,7 +100,10 @@ function splitContent(content) {
 export function insertIntoSection(markdown, path, content) {
   const items = parsePath(path);
   const newLines = splitContent(content);
-  const lines = String(markdown ?? '').replace(/\r\n/g, '\n').split('\n');
+  const original = String(markdown ?? '').replace(/\r\n/g, '\n');
+  // Keep the note's own ending: no final line break is added if it had none.
+  const endsWithBreak = original === '' || original.endsWith('\n');
+  const lines = original.split('\n');
   if (lines.length && lines[lines.length - 1] === '' && lines.length > 1) lines.pop();
   const { resolved, headings, parentEnd } = resolve(lines, items);
   const missing = items.slice(resolved.length);
@@ -136,7 +139,7 @@ export function insertIntoSection(markdown, path, content) {
   lines.splice(at, 0, ...block);
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
   return {
-    markdown: `${lines.join('\n')}\n`,
+    markdown: endsWithBreak ? `${lines.join('\n')}\n` : lines.join('\n'),
     line: at + contentOffset + 1,
     created: missing.map((m) => `${'#'.repeat(m.level)} ${m.text}`)
   };

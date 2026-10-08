@@ -113,6 +113,11 @@ test('sections: everything outside the inserted lines is byte-for-byte unchanged
   assert.equal(out.replace('- two\n', ''), JOURNAL);
 });
 
+test('sections: a note without a final line break does not get one', () => {
+  assert.equal(add('- mine\n\n## Worked on with Claude\n- one', [CLAUDE], '- two'), '- mine\n\n## Worked on with Claude\n- one\n- two');
+  assert.equal(add('- mine\n\n#daily', [CLAUDE, BH], '- x'), `- mine\n\n${CLAUDE}\n${BH}\n- x\n\n#daily`);
+});
+
 test('sections: bad paths and empty content are refused', () => {
   const refused = (fn, pattern) => assert.throws(fn, (err) => err instanceof SectionPathError && err.code === 'INVALID_ARGUMENT' && pattern.test(err.message));
   refused(() => insertIntoSection(JOURNAL, [], '- x'), /non-empty/);

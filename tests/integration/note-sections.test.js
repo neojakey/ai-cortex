@@ -66,7 +66,7 @@ test('addToSection: needs no revision, even though the note changed since anyone
   const note = await makeNote(`${CLAUDE}\n`);
   await noteService.updateNote(note.id, { content: `${CLAUDE}\n- someone else wrote this`, expectedRevision: note.revision });
   await noteService.addToSection(note.id, [CLAUDE], '- mine');
-  assert.equal((await noteService.getNoteById(note.id)).content, `${CLAUDE}\n- someone else wrote this\n- mine\n`);
+  assert.equal((await noteService.getNoteById(note.id)).content, `${CLAUDE}\n- someone else wrote this\n- mine`);
 });
 
 test('addToSection: two adds at the same moment are both kept', async () => {
