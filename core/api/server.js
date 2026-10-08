@@ -249,6 +249,18 @@ function sendServiceError(res, err, fallbackStatus = 400) {
   return res.status(fallbackStatus).json({ error: err.message });
 }
 
+// Add text under a heading path without sending the whole note (see markdownSections.js).
+// Body: { section: ["## Worked on with Claude", "### BolsaHotelera"], content: "- ..." }.
+// :id may be a note id or slug; daily-YYYY-MM-DD is created if missing. Returns a summary.
+app.post('/api/notes/:id/section', async (req, res) => {
+  try {
+    const { section, content } = req.body || {};
+    res.json(await noteService.addToSection(req.params.id, section, content));
+  } catch (err) {
+    sendServiceError(res, err, 500);
+  }
+});
+
 // Update note. expectedRevision (the revision you last read) is required: a write
 // missing it is refused with 400 before anything is touched, and a stale one with 409.
 app.put('/api/notes/:id', async (req, res) => {

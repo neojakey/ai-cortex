@@ -134,6 +134,41 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
+        name: 'ai_cortex_add_to_section',
+        description: 'Add text under a heading in a note without sending the whole note: the server inserts it into the current text in one save, so there is nothing to read first, no expectedRevision, and nothing else in the note can change. ' +
+          'Use this for logging (e.g. the daily journal: idOrTitle "daily-YYYY-MM-DD", section ["## Worked on with Claude", "### BolsaHotelera"], content "- what was done"). ' +
+          'The text goes at the end of that section\'s own text (before any subheading, above a closing tag-only line such as #daily). Missing headings are created. A daily-YYYY-MM-DD note that does not exist yet is created. Returns a short summary, not the note.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            idOrTitle: { type: 'string', description: 'The note ID, title, or slug (e.g. daily-2026-10-08)' },
+            section: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Heading path from the top, each written as a markdown heading with its level, e.g. ["## Worked on with Claude", "### BolsaHotelera"]. Each must be deeper than the one before.'
+            },
+            content: { type: 'string', description: 'The markdown to add, e.g. "- Fixed the chart height (cccb80f)". Several lines are fine.' }
+          },
+          required: ['idOrTitle', 'section', 'content']
+        }
+      },
+      {
+        name: 'ai_cortex_read_section',
+        description: 'Read one section of a note (its heading, text and subsections) plus the note\'s outline (its list of headings), instead of the whole note.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            idOrTitle: { type: 'string', description: 'The note ID, title, or slug' },
+            section: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Heading path, e.g. ["## Worked on with Claude", "### BolsaHotelera"]'
+            }
+          },
+          required: ['idOrTitle', 'section']
+        }
+      },
+      {
         name: 'ai_cortex_get_backlinks',
         description: 'Discover all notes in AI-Cortex that link to a specific note or topic.',
         inputSchema: {
@@ -227,8 +262,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true
           };
         }
+        // Compact JSON: indentation only costs the reader tokens.
         return {
-          content: [{ type: 'text', text: JSON.stringify(note, null, 2) }]
+          content: [{ type: 'text', text: JSON.stringify(note) }]
         };
       }
 
@@ -327,6 +363,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
           ]
         };
+      }
+
+      case 'ai_cortex_add_to_section':
+      case 'ai_cortex_read_section': {
+        try {
+          const result = name === 'ai_cortex_add_to_section'
+            ? await noteService.addToSection(args.idOrTitle, args.section, args.content)
+            : await noteService.readSection(args.idOrTitle, args.section);
+          return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+        } catch (err) {
+          if (err.code === 'NOT_FOUND' || err.code === 'INVALID_ARGUMENT') {
+            return { content: [{ type: 'text', text: JSON.stringify({ error: err.code, message: err.message }) }], isError: true };
+          }
+          throw err;
+        }
       }
 
       case 'ai_cortex_get_backlinks': {

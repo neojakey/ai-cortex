@@ -4,6 +4,7 @@ import { slugify, extractWikilinks, extractHashtags, extractTasks, markdownToPla
 import { projectService } from './projectService.js';
 import { journalTitleSql } from './journalTitle.js';
 import { retryOnDeadlock } from '../db/retry.js';
+import { insertIntoSection, readSection, outlineOf } from './markdownSections.js';
 
 function normalizeCustomTags(customTags) {
   return (Array.isArray(customTags) ? customTags : [])
@@ -204,6 +205,7 @@ export class NoteService {
     title,
     content,
     appendContent,
+    editContent,
     status,
     dueDate,
     properties,
@@ -220,6 +222,9 @@ export class NoteService {
     }
     if (appendContent !== undefined && typeof appendContent !== 'string') {
       throw codedError('INVALID_ARGUMENT', 'appendContent must be a string');
+    }
+    if (editContent !== undefined && (typeof editContent !== 'function' || content !== undefined || appendContent !== undefined)) {
+      throw codedError('INVALID_ARGUMENT', 'editContent must be a function, used without content or appendContent');
     }
     assertValidStatus(status);
     const expected = parseExpectedRevision(expectedRevision);
@@ -238,7 +243,9 @@ export class NoteService {
 
       // Checked after NOT_FOUND (an unknown note is a 404, not a "you forgot a field")
       // but before anything is written, so a rejected write still leaves no trace.
-      if (requireRevision && appendContent === undefined && expected === undefined) {
+      // appendContent and editContent work on the locked current text, so like an append
+      // an edit can't overwrite anyone's newer change and needs no revision.
+      if (requireRevision && appendContent === undefined && editContent === undefined && expected === undefined) {
         throw codedError(
           'EXPECTED_REVISION_REQUIRED',
           'expectedRevision is required for a replacement write. Read the note first and pass its ' +
@@ -258,7 +265,9 @@ export class NoteService {
         : undefined;
 
       const newTitle = title !== undefined ? title.trim() : existing.title;
-      const newContent = appendContent !== undefined
+      const newContent = editContent !== undefined
+        ? editContent(existingContent)
+        : appendContent !== undefined
         ? `${existingContent}\n\n${appendContent}`
         : (content !== undefined ? content : existingContent);
       const newStatus = status !== undefined ? status : existing.status;
@@ -747,6 +756,49 @@ export class NoteService {
       tags: noteTagsMap[r.id] || [],
       journalTitle: r.journal_title || null
     }));
+  }
+
+  /**
+   * Add text under a heading path (see markdownSections.js) in the note's current text, in
+   * one locked save: no expectedRevision needed, and nothing else in the note can change.
+   * A daily slug (daily-YYYY-MM-DD) that doesn't exist yet is created, like the app does.
+   * @returns {Promise<{id, title, revision, line, created}>} a small summary, not the note
+   * @throws {Error} code NOT_FOUND | INVALID_ARGUMENT
+   */
+  async addToSection(idOrSlug, section, content) {
+    const note = await this._findForSection(idOrSlug, { createDaily: true });
+    let placed;
+    const updated = await this.updateNote(note.id, {
+      editContent: (current) => {
+        placed = insertIntoSection(current, section, content);
+        return placed.markdown;
+      }
+    });
+    return { id: updated.id, title: updated.title, revision: updated.revision, line: placed.line, created: placed.created };
+  }
+
+  /**
+   * One section's text plus the note's outline, instead of the whole note.
+   * @returns {Promise<{id, title, revision, section: string|null, outline: string[]}>}
+   */
+  async readSection(idOrSlug, section) {
+    const note = await this._findForSection(idOrSlug, { createDaily: false });
+    return {
+      id: note.id,
+      title: note.title,
+      revision: note.revision,
+      section: readSection(note.content, section),
+      outline: outlineOf(note.content)
+    };
+  }
+
+  async _findForSection(idOrSlug, { createDaily }) {
+    const key = String(idOrSlug ?? '').trim();
+    const note = (await this.getNoteById(key)) || (await this.getNoteBySlug(slugify(key)));
+    if (note) return note;
+    const daily = /^daily-(\d{4}-\d{2}-\d{2})$/.exec(slugify(key));
+    if (createDaily && daily) return this.getOrCreateDailyNote(daily[1]);
+    throw codedError('NOT_FOUND', `Note not found: ${key}`);
   }
 
   /**
