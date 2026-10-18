@@ -19,6 +19,22 @@ export function displayTitle(title, journalTitle) {
   return name ? `Journal: ${name} - ${match[1]}` : `Journal: ${match[1]}`;
 }
 
+/**
+ * A note's title as shown inside its folder in the sidebar tree: a leading "<Folder>: "
+ * is dropped, since the folder already says it ("BolsaHotelera: deploy commands" under
+ * BolsaHotelera shows as "deploy commands"). Names match ignoring case, spaces and
+ * punctuation. Anything else, or a title that is only the prefix, is shown unchanged.
+ */
+export function treeTitle(title, folderName) {
+  const text = String(title || '');
+  const colon = text.indexOf(':');
+  if (colon <= 0 || !folderName) return text;
+  const normalise = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  const rest = text.slice(colon + 1).trim();
+  if (!rest || normalise(text.slice(0, colon)) !== normalise(folderName) || !normalise(folderName)) return text;
+  return rest;
+}
+
 /** A note's saved journal title, '' when it has none. */
 export function savedJournalTitle(note) {
   const value = note?.properties?.[JOURNAL_TITLE_PROPERTY];

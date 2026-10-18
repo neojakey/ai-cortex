@@ -26,6 +26,9 @@ createdNotes.push(dailyNote);
 const noteA = await createNote({ title: 'Note A in Gamma', content: 'gamma content', project: pGamma });
 const noteA2 = await createNote({ title: 'Note A2 in Gamma', content: 'gamma content 2', project: pGamma });
 createdNotes.push(noteA, noteA2);
+// A note titled with its own folder's name as a prefix, as many notes are
+const notePrefixed = await createNote({ title: `${pGamma}: prefixed note`, content: 'prefixed', project: pGamma });
+createdNotes.push(notePrefixed);
 
 // 5. Loose Unfiled Note
 const noteB = await createNote({ title: 'Note B Unfiled', content: 'unfiled content' });
@@ -65,6 +68,12 @@ try {
   check(await gammaBtn.getAttribute('aria-expanded') === 'true', 'Open note A folder (Project Gamma) auto-expanded');
   const activeTreeNote = page.locator('.tree-note-item.active');
   check((await activeTreeNote.innerText()).trim() === 'Note A in Gamma', 'Open note A is highlighted active in tree');
+
+  // --- CHECK 3b: a title that starts with its folder's name is shown without it ---
+  const prefixedTitle = page.locator('.tree-folder', { has: page.locator('.tree-folder-btn', { hasText: pGamma }) }).locator('.tree-note-title', { hasText: 'prefixed note' });
+  check((await prefixedTitle.innerText()).trim() === 'prefixed note', 'Folder prefix is hidden from a note title inside its folder');
+  check(await prefixedTitle.getAttribute('title') === `${pGamma}: prefixed note`, 'The full title is still available as the tooltip');
+  check(await page.locator('.note-item', { hasText: `${pGamma}: prefixed note` }).count() === 1, 'The Recent list still shows the full title');
 
   // --- CHECK 4: Expansion is remembered after a reload ---
   // Currently both Zeta and Gamma are expanded.
@@ -193,6 +202,19 @@ try {
 
   const noteBAfterChip = await getNote(noteB.id);
   check(noteBAfterChip.project?.name === pZeta, 'Suggestion chip moved Note B to Project Zeta');
+
+  // 9e: Pressing Enter on a name written differently ("project-gamma-123" for "Project Gamma 123") reuses the folder
+  await page.selectOption('.properties-bar .folder-select', '__NEW_FOLDER__');
+  await page.waitForSelector('.folder-create-input');
+  const variant = pGamma.toLowerCase().replace(/ /g, '-');
+  await page.fill('.folder-create-input', variant);
+  const dialogCountBeforeEnter = dialogs.length;
+  await page.press('.folder-create-input', 'Enter');
+  await page.waitForSelector(`.tree-folder:has-text("${pGamma}") .tree-note-item:has-text("Note B Unfiled")`, { timeout: 10000 });
+  check(dialogs.length === dialogCountBeforeEnter, 'Enter on a differently written name shows no confirmation');
+  check((await getNote(noteB.id)).project?.name === pGamma, 'Note B moved to the existing folder, not a new one');
+  const afterEnter = await api('/api/projects');
+  check(!(afterEnter.projects || []).some((p) => p.name === variant), 'No near-duplicate folder was created');
 
   // --- CHECK 10: Switching notes quickly never writes into the wrong note ---
   const switch1 = await createNote({ title: 'Switch One', content: 'original one' });

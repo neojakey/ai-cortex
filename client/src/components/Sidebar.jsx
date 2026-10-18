@@ -16,7 +16,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { localDateString } from '../lib/dates.js';
-import { displayTitle } from '../lib/noteTitle.js';
+import { displayTitle, treeTitle } from '../lib/noteTitle.js';
 
 // Collapsed-by-default filter accordion, shared by the Projects and Hashtags
 // sections — auto-expands whenever its own filter is the active one, so the
@@ -288,7 +288,7 @@ export default function Sidebar({
                         }}
                       >
                         <span className="tree-note-title" title={n.title}>
-                          {n.title || 'Untitled'}
+                          {treeTitle(n.title, folder.project?.name) || 'Untitled'}
                         </span>
                       </div>
                     ))}

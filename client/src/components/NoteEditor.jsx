@@ -539,7 +539,9 @@ ${backlinksText}
       setIsCreatingFolder(false);
       return;
     }
-    const existing = projects.find((p) => p.name.toLowerCase() === trimmed.toLowerCase());
+    // Same folder if the names match ignoring case, spaces and punctuation ("ai cortex" is "AI-Cortex").
+    const typed = normalizeProjectName(trimmed);
+    const existing = typed ? projects.find((p) => normalizeProjectName(p.name) === typed) : null;
     if (existing) {
       await moveFolder(existing.name);
       return;
