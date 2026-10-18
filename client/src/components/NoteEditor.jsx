@@ -35,6 +35,7 @@ import { draftStorage, shouldResumeDraft, shouldPersistEdits, purgeLegacyDrafts 
 import CropModal from './CropModal.jsx';
 import GooglePhotosModal from './GooglePhotosModal.jsx';
 import { displayTitle, savedJournalTitle, journalTitleSave } from '../lib/noteTitle.js';
+import { normalizeProjectName } from '../lib/projectLabels.js';
 
 // Once per browser, before any note loads: drop drafts written before the note-switch fix.
 purgeLegacyDrafts();
@@ -554,8 +555,12 @@ ${backlinksText}
   };
 
   const trimmedNewName = newFolderName.trim().slice(0, 255);
-  const matchingProjects = trimmedNewName
-    ? projects.filter((p) => p.name.toLowerCase().includes(trimmedNewName.toLowerCase()))
+  const normalizedTyped = normalizeProjectName(trimmedNewName);
+  const matchingProjects = normalizedTyped
+    ? projects.filter((p) => {
+        const normP = normalizeProjectName(p.name);
+        return normP.includes(normalizedTyped) || (normalizedTyped.length >= 3 && normalizedTyped.includes(normP));
+      })
     : [];
 
   // Save a square crop of a photo (CropModal picks it, core/services/photoCrop.js does it).

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { parseHash, formatHash } from './lib/route.js';
 import { localDateString } from './lib/dates.js';
 import Sidebar from './components/Sidebar.jsx';
@@ -41,6 +41,10 @@ export default function App() {
   const [selectedTag, setSelectedTag] = useState(null);
   const [projects, setProjects] = useState([]);
   const [folderTree, setFolderTree] = useState([]);
+  const folderTreeRef = useRef(folderTree);
+  useEffect(() => {
+    folderTreeRef.current = folderTree;
+  }, [folderTree]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [health, setHealth] = useState(null);
   const [dailyStatus, setDailyStatus] = useState(null);
@@ -269,7 +273,9 @@ export default function App() {
       const res = await fetch('/api/notes/tree');
       if (res.ok) {
         const data = await res.json();
-        setFolderTree(data.folders || []);
+        const folders = data.folders || [];
+        folderTreeRef.current = folders;
+        setFolderTree(folders);
       }
     } catch (err) {
       console.error('Failed to fetch folder tree:', err);
@@ -313,7 +319,44 @@ export default function App() {
         if (activeNote && activeNote.id === id) {
           setActiveNote(data.note);
         }
-        fetchTree();
+
+        // Only refetch when the saved note's title, status or project differs from what the tree holds
+        const currentTree = folderTreeRef.current || [];
+        let noteInTree = null;
+        let folderInTree = null;
+        for (const f of currentTree) {
+          const found = (f.notes || []).find((n) => n.id === id);
+          if (found) {
+            noteInTree = found;
+            folderInTree = f;
+            break;
+          }
+        }
+
+        const savedNote = data.note;
+        const isDaily = /^Daily: \d{4}-\d{2}-\d{2}$/.test(savedNote.title || '');
+        let treeNeedsUpdate = false;
+
+        if (noteInTree) {
+          const treeProjectId = folderInTree?.project?.id || null;
+          const savedProjectId = savedNote.project?.id || null;
+          if (savedNote.status !== 'active' || isDaily) {
+            treeNeedsUpdate = true;
+          } else if (savedNote.title !== noteInTree.title) {
+            treeNeedsUpdate = true;
+          } else if (treeProjectId !== savedProjectId) {
+            treeNeedsUpdate = true;
+          }
+        } else {
+          if (savedNote.status === 'active' && !isDaily) {
+            treeNeedsUpdate = true;
+          }
+        }
+
+        if (treeNeedsUpdate) {
+          fetchTree();
+        }
+
         if (data.note.status !== 'active') {
           fetchData();
         }

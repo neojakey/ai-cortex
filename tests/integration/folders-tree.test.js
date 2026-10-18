@@ -49,7 +49,7 @@ test('GET /api/notes/tree: excludes daily, trashed, and archived notes; groups b
 
   // Active notes in projects
   const noteZ1 = await noteService.createNote({ title: uniq('b-note in Zulu'), content: 'test', project: pZ.name });
-  const noteZ2 = await noteService.createNote({ title: uniq('A-note in Zulu'), content: 'test', project: pZ.name });
+  const noteZ2 = await noteService.createNote({ title: uniq('C-note in Zulu'), content: 'test', project: pZ.name });
   const noteA1 = await noteService.createNote({ title: uniq('Note in Alpha'), content: 'test', project: pA.name });
 
   // Unfiled active note
@@ -97,7 +97,7 @@ test('GET /api/notes/tree: excludes daily, trashed, and archived notes; groups b
   const zuluFolder = folders.find((f) => f.project?.id === pZ.id);
   assert.ok(zuluFolder, 'Zulu folder should exist');
   const zuluNoteTitles = zuluFolder.notes.map((n) => n.title);
-  assert.deepEqual(zuluNoteTitles, [noteZ2.title, noteZ1.title], 'Notes in Zulu should be sorted case-insensitively ignoring case (A before b)');
+  assert.deepEqual(zuluNoteTitles, [noteZ1.title, noteZ2.title], 'Notes in Zulu should be sorted case-insensitively ignoring case (b before C)');
 
   // 5. Notes in tree must be lightweight (no content, no tags, no backlinks, no previews)
   const sampleNote = zuluFolder.notes[0];
