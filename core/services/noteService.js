@@ -1031,6 +1031,61 @@ export class NoteService {
     );
     return rows;
   }
+
+  /**
+   * Lightweight tree of all active, non-daily notes grouped by project folder.
+   * Folders are sorted alphabetically by project name with the null ("Unfiled") folder last.
+   * Notes within each folder are sorted alphabetically by title ignoring case.
+   */
+  async getFolderTree(db = pool) {
+    const [rows] = await db.query(`
+      SELECT 
+        n.id,
+        n.title,
+        n.updated_at AS updatedAt,
+        p.id AS project_id,
+        p.name AS project_name,
+        p.slug AS project_slug,
+        p.color AS project_color
+      FROM notes n
+      LEFT JOIN projects p ON n.project_id = p.id
+      WHERE n.status = 'active'
+        AND n.title NOT REGEXP '^Daily: [0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    `);
+
+    const map = new Map();
+    for (const r of rows) {
+      const key = r.project_id || '__unfiled__';
+      if (!map.has(key)) {
+        map.set(key, {
+          project: r.project_id ? {
+            id: r.project_id,
+            name: r.project_name,
+            slug: r.project_slug,
+            color: r.project_color
+          } : null,
+          notes: []
+        });
+      }
+      map.get(key).notes.push({
+        id: r.id,
+        title: r.title,
+        updatedAt: r.updatedAt
+      });
+    }
+
+    for (const folder of map.values()) {
+      folder.notes.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
+    }
+
+    const folders = Array.from(map.values()).sort((a, b) => {
+      if (!a.project) return 1;
+      if (!b.project) return -1;
+      return a.project.name.localeCompare(b.project.name, undefined, { sensitivity: 'base' });
+    });
+
+    return folders;
+  }
 }
 
 export const noteService = new NoteService();

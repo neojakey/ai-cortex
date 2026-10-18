@@ -40,6 +40,7 @@ export default function App() {
   const [tags, setTags] = useState([]);
   const [selectedTag, setSelectedTag] = useState(null);
   const [projects, setProjects] = useState([]);
+  const [folderTree, setFolderTree] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [health, setHealth] = useState(null);
   const [dailyStatus, setDailyStatus] = useState(null);
@@ -166,22 +167,25 @@ export default function App() {
       if (selectedTag) notesParams.set('tag', selectedTag);
       if (selectedProject) notesParams.set('project', selectedProject);
 
-      const [notesRes, tagsRes, projectsRes, healthRes] = await Promise.all([
+      const [notesRes, tagsRes, projectsRes, healthRes, treeRes] = await Promise.all([
         fetch(`/api/notes?${notesParams.toString()}`),
         fetch('/api/tags'),
         fetch('/api/projects'),
-        fetch('/api/health')
+        fetch('/api/health'),
+        fetch('/api/notes/tree')
       ]);
 
       const notesData = await notesRes.json();
       const tagsData = await tagsRes.json();
       const projectsData = await projectsRes.json();
       const healthData = await healthRes.json();
+      const treeData = await treeRes.json();
 
       setNotes(notesData.notes || []);
       setTags(tagsData.tags || []);
       setProjects(projectsData.projects || []);
       setHealth(healthData);
+      setFolderTree(treeData.folders || []);
 
       // Passive check for the sidebar's photo-of-the-day indicator (never creates the note)
       try {
@@ -260,6 +264,18 @@ export default function App() {
     }
   }, [fetchData]);
 
+  const fetchTree = useCallback(async () => {
+    try {
+      const res = await fetch('/api/notes/tree');
+      if (res.ok) {
+        const data = await res.json();
+        setFolderTree(data.folders || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch folder tree:', err);
+    }
+  }, []);
+
   // Update note
   const handleUpdateNote = async (id, updatePayload) => {
     try {
@@ -296,6 +312,10 @@ export default function App() {
 
         if (activeNote && activeNote.id === id) {
           setActiveNote(data.note);
+        }
+        fetchTree();
+        if (data.note.status !== 'active') {
+          fetchData();
         }
       }
       return data.note;
@@ -387,6 +407,7 @@ export default function App() {
         onSelectProject={setSelectedProject}
         health={health}
         width={sidebarWidth}
+        folders={folderTree}
       />
 
       {/* Sidebar resize handle */}

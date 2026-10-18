@@ -204,6 +204,17 @@ app.get('/api/journal/adjacent', async (req, res) => {
   }
 });
 
+// Lightweight tree of all active, non-daily notes grouped by project folder.
+// Must sit before /api/notes/:id or Express treats "tree" as a note id.
+app.get('/api/notes/tree', async (req, res) => {
+  try {
+    const folders = await noteService.getFolderTree();
+    res.json({ folders });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get single note by ID
 app.get('/api/notes/:id', async (req, res) => {
   try {

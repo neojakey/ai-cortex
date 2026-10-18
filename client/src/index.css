@@ -405,6 +405,106 @@ button, input, textarea, select {
   background: var(--accent-primary);
 }
 
+
+/* --------------------------------------------------------------------------
+   FOLDERS TREE COMPONENT
+   -------------------------------------------------------------------------- */
+.folders-tree-section {
+  margin-bottom: 12px;
+}
+
+.tree-folder {
+  margin-bottom: 2px;
+}
+
+.tree-folder-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+
+.tree-folder-btn:hover {
+  background-color: var(--bg-surface-hover);
+  color: var(--text-main);
+}
+
+.tree-folder-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tree-folder-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.tree-folder-count {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tree-folder-children {
+  padding-left: 14px;
+  margin-top: 2px;
+  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tree-note-item {
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.tree-note-item:hover {
+  background-color: var(--bg-surface-hover);
+  color: var(--text-main);
+  border-color: var(--border-ultra-subtle);
+}
+
+.tree-note-item.active {
+  background-color: var(--bg-surface);
+  border-color: var(--border-subtle);
+  color: var(--accent-primary);
+  box-shadow: var(--shadow-subtle);
+  font-weight: 600;
+}
+
+.tree-note-title {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
 .notes-list-section {
   flex: 1;
   overflow-y: auto;

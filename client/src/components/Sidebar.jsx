@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   FileText,
   Calendar,
@@ -21,6 +21,20 @@ import { displayTitle } from '../lib/noteTitle.js';
 // Collapsed-by-default filter accordion, shared by the Projects and Hashtags
 // sections — auto-expands whenever its own filter is the active one, so the
 // user always sees what's currently filtering the note list.
+const FOLDERS_STORAGE_KEY = 'ai_cortex_expanded_folders';
+const loadExpandedFolders = () => {
+  try {
+    const raw = localStorage.getItem(FOLDERS_STORAGE_KEY);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch { /* ignore */ }
+  return new Set();
+};
+const persistExpandedFolders = (set) => {
+  try {
+    localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch { /* ignore */ }
+};
+
 function FilterSection({ title, items, activeKey, onSelect, prefix = '', getKey, getLabel, getCount }) {
   const [manualOpen, setManualOpen] = useState(false);
   if (!items || items.length === 0) return null;
@@ -102,10 +116,45 @@ export default function Sidebar({
   selectedProject,
   onSelectProject,
   health,
-  width
+  width,
+  folders = []
 }) {
   // Today's daily note is opened in the note editor, so it lights up "Today's Journal"
   // instead of "Notes Editor".
+  const [expandedKeys, setExpandedKeys] = useState(loadExpandedFolders);
+
+  // Auto-expand the folder containing the currently open note
+  const activeFolderKey = useMemo(() => {
+    if (!activeNoteId || !folders) return null;
+    for (const f of folders) {
+      if (f.notes && f.notes.some((n) => n.id === activeNoteId)) {
+        return f.project ? f.project.slug : '__unfiled__';
+      }
+    }
+    return null;
+  }, [activeNoteId, folders]);
+
+  useEffect(() => {
+    if (activeFolderKey && !expandedKeys.has(activeFolderKey)) {
+      setExpandedKeys((prev) => {
+        const next = new Set(prev);
+        next.add(activeFolderKey);
+        persistExpandedFolders(next);
+        return next;
+      });
+    }
+  }, [activeFolderKey]);
+
+  const toggleFolder = (key) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      persistExpandedFolders(next);
+      return next;
+    });
+  };
+
   const activeNote = activeView === 'document' ? notes.find((n) => n.id === activeNoteId) : null;
   const onTodaysJournal = !!activeNote && activeNote.title === `Daily: ${localDateString()}`;
   return (
@@ -200,65 +249,102 @@ export default function Sidebar({
         </button>
       </div>
 
-      {/* Notes List */}
+      {/* Notes & Folders */}
       <div className="notes-list-section">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px 8px' }}>
-          <span className="section-label" style={{ padding: 0 }}>
-            {[
-              selectedProject && (projects.find((p) => p.slug === selectedProject)?.name || selectedProject),
-              selectedTag && `#${selectedTag}`
-            ].filter(Boolean).join(' · ') || 'All Notes'} ({notes.length})
-          </span>
-          {(selectedTag || selectedProject) && (
-            <button
-              style={{ background: 'none', border: 'none', color: '#818cf8', fontSize: 11, cursor: 'pointer' }}
-              onClick={() => { onSelectTag(null); onSelectProject(null); }}
-            >
-              Clear
-            </button>
-          )}
+        {/* Folders Tree */}
+        <div className="folders-tree-section">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px 8px' }}>
+            <span className="section-label" style={{ padding: 0 }}>Folders</span>
+          </div>
+          {folders.map((folder) => {
+            const folderKey = folder.project ? folder.project.slug : '__unfiled__';
+            const folderName = folder.project ? folder.project.name : 'Unfiled';
+            const isOpen = expandedKeys.has(folderKey);
+            return (
+              <div key={folderKey} className="tree-folder">
+                <button
+                  type="button"
+                  className="tree-folder-btn"
+                  aria-expanded={isOpen}
+                  onClick={() => toggleFolder(folderKey)}
+                >
+                  <span className="tree-folder-caret">
+                    {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  </span>
+                  <span className="tree-folder-name" title={folderName}>
+                    {folderName}
+                  </span>
+                  <span className="tree-folder-count">({folder.notes.length})</span>
+                </button>
+                {isOpen && (
+                  <div className="tree-folder-children">
+                    {folder.notes.map((n) => (
+                      <div
+                        key={n.id}
+                        className={`tree-note-item ${activeNoteId === n.id && activeView === 'document' ? 'active' : ''}`}
+                        onClick={() => {
+                          onChangeView('document');
+                          onSelectNote(n.id);
+                        }}
+                      >
+                        <span className="tree-note-title" title={n.title}>
+                          {n.title || 'Untitled'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
-        {notes.map((note) => (
-          <div
-            key={note.id}
-            className={`note-item ${activeNoteId === note.id && activeView === 'document' ? 'active' : ''}`}
-            onClick={() => {
-              onChangeView('document');
-              onSelectNote(note.id);
-            }}
-          >
-            <div className="note-item-title">{displayTitle(note.title, note.journalTitle) || 'Untitled'}</div>
-            <div className="note-item-meta">
-              <span>{new Date(note.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-              {note.backlinkCount > 0 && (
-                <span title={`${note.backlinkCount} backlinks`} style={{ color: '#818cf8' }}>
-                  ⇄ {note.backlinkCount}
-                </span>
-              )}
-              {note.tags && note.tags.slice(0, 2).map((t) => (
-                <span key={t} className="badge-tag">#{t}</span>
-              ))}
-              {note.tags && note.tags.length > 2 && (
-                <span className="badge-tag badge-tag-more" title={note.tags.slice(2).map((t) => `#${t}`).join(' ')}>
-                  +{note.tags.length - 2}
-                </span>
-              )}
-            </div>
+        {/* Recent Notes List */}
+        <div className="recent-notes-section" style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border-dim)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px 8px' }}>
+            <span className="section-label" style={{ padding: 0 }}>
+              {selectedTag ? `#${selectedTag}` : 'Recent'} ({notes.length})
+            </span>
+            {selectedTag && (
+              <button
+                style={{ background: 'none', border: 'none', color: '#818cf8', fontSize: 11, cursor: 'pointer' }}
+                onClick={() => onSelectTag(null)}
+              >
+                Clear
+              </button>
+            )}
           </div>
-        ))}
-      </div>
 
-      {/* Projects (collapsed accordion) */}
-      <FilterSection
-        title="Projects"
-        items={projects}
-        activeKey={selectedProject}
-        onSelect={onSelectProject}
-        getKey={(p) => p.slug}
-        getLabel={(p) => p.name}
-        getCount={(p) => p.noteCount}
-      />
+          {notes.map((note) => (
+            <div
+              key={note.id}
+              className={`note-item ${activeNoteId === note.id && activeView === 'document' ? 'active' : ''}`}
+              onClick={() => {
+                onChangeView('document');
+                onSelectNote(note.id);
+              }}
+            >
+              <div className="note-item-title">{displayTitle(note.title, note.journalTitle) || 'Untitled'}</div>
+              <div className="note-item-meta">
+                <span>{new Date(note.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                {note.backlinkCount > 0 && (
+                  <span title={`${note.backlinkCount} backlinks`} style={{ color: '#818cf8' }}>
+                    ⇄ {note.backlinkCount}
+                  </span>
+                )}
+                {note.tags && note.tags.slice(0, 2).map((t) => (
+                  <span key={t} className="badge-tag">#{t}</span>
+                ))}
+                {note.tags && note.tags.length > 2 && (
+                  <span className="badge-tag badge-tag-more" title={note.tags.slice(2).map((t) => `#${t}`).join(' ')}>
+                    +{note.tags.length - 2}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Hashtags (collapsed accordion) */}
       <FilterSection
