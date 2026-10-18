@@ -575,6 +575,16 @@ button, input, textarea, select {
   border: 1px solid var(--border-dim);
 }
 /* "+2" when a note has more tags than the note list shows; hover for the rest */
+/* "Show 120 more…" at the end of the Hashtags list */
+.filter-more-btn {
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  font-size: 11px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.filter-more-btn:hover { text-decoration: underline; }
 .badge-tag.badge-tag-more { color: var(--text-muted); cursor: default; }
 
 .sidebar-footer {

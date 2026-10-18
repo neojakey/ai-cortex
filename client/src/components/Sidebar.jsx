@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { localDateString } from '../lib/dates.js';
 import { displayTitle, treeTitle } from '../lib/noteTitle.js';
+import { splitTagList } from '../lib/tagLists.js';
 
 // Collapsed-by-default filter accordion, shared by the Projects and Hashtags
 // sections — auto-expands whenever its own filter is the active one, so the
@@ -35,7 +36,7 @@ const persistExpandedFolders = (set) => {
   } catch { /* ignore */ }
 };
 
-function FilterSection({ title, items, activeKey, onSelect, prefix = '', getKey, getLabel, getCount }) {
+function FilterSection({ title, items, activeKey, onSelect, prefix = '', getKey, getLabel, getCount, hiddenCount = 0, showingAll = false, onToggleAll }) {
   const [manualOpen, setManualOpen] = useState(false);
   if (!items || items.length === 0) return null;
 
@@ -92,6 +93,15 @@ function FilterSection({ title, items, activeKey, onSelect, prefix = '', getKey,
               </button>
             );
           })}
+          {onToggleAll && (hiddenCount > 0 || showingAll) && (
+            <button
+              type="button"
+              className="filter-more-btn"
+              onClick={onToggleAll}
+            >
+              {showingAll ? 'Show fewer' : `Show ${hiddenCount} more…`}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -122,6 +132,11 @@ export default function Sidebar({
   // Today's daily note is opened in the note editor, so it lights up "Today's Journal"
   // instead of "Notes Editor".
   const [expandedKeys, setExpandedKeys] = useState(loadExpandedFolders);
+  const [showAllTags, setShowAllTags] = useState(false);
+  const { visible: visibleTags, hiddenCount: hiddenTagCount } = useMemo(
+    () => splitTagList(tags, { showAll: showAllTags, activeKey: selectedTag }),
+    [tags, showAllTags, selectedTag]
+  );
 
   // Auto-expand the folder containing the currently open note
   const activeFolderKey = useMemo(() => {
@@ -349,7 +364,10 @@ export default function Sidebar({
       {/* Hashtags (collapsed accordion) */}
       <FilterSection
         title="Hashtags"
-        items={tags}
+        items={visibleTags}
+        hiddenCount={hiddenTagCount}
+        showingAll={showAllTags}
+        onToggleAll={() => setShowAllTags((v) => !v)}
         activeKey={selectedTag}
         onSelect={onSelectTag}
         prefix="#"
