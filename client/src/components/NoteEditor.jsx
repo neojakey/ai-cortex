@@ -25,7 +25,8 @@ import {
   CalendarDays,
   AlertCircle,
   Crop,
-  ImagePlus
+  ImagePlus,
+  Folder
 } from 'lucide-react';
 import { renderNoteMarkdown, WIKILINK_PREFIX } from '../lib/renderMarkdown.js';
 import { getDefaultThumbSize } from '../lib/prefs.js';
@@ -163,6 +164,9 @@ export default function NoteEditor({
     });
   }
   const [isUploading, setIsUploading] = useState(false);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [isMovingFolder, setIsMovingFolder] = useState(false);
   const [cropTarget, setCropTarget] = useState(null); // the attachment open in the crop window
   const [removingId, setRemovingId] = useState(null); // the attachment being removed, if any
   const [googlePhotosFor, setGooglePhotosFor] = useState(null); // note id the Google Photos window adds to
@@ -216,6 +220,9 @@ export default function NoteEditor({
     setShowWikilinks(false);
     setThumbSize(getDefaultThumbSize());
     setCropTarget(null);
+    setIsCreatingFolder(false);
+    setNewFolderName('');
+    setIsMovingFolder(false);
   }, [note?.id]);
 
   const isDirty = !!note && (
@@ -490,6 +497,67 @@ ${backlinksText}
     }
   };
 
+  // Move note to another folder (or clear folder with null)
+  // Saved first and revision-checked, like a crop or remove.
+  const moveFolder = async (targetProjectName) => {
+    if (!note || isMovingFolder) return;
+    const noteId = note.id;
+    setIsMovingFolder(true);
+    try {
+      const expectedRevision = await saveBeforeServerEdit('note could not be moved');
+      const res = await fetch(`/api/notes/${noteId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project: targetProjectName || null,
+          expectedRevision
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.code === 'REVISION_CONFLICT'
+          ? conflictMessage
+          : data.error || `Could not move note (${res.status})`);
+      }
+      setIsCreatingFolder(false);
+      setNewFolderName('');
+      if (latestRef.current.note?.id === noteId && latestRef.current.loadedNoteId === noteId) {
+        await refreshNow({ skipConfirm: true });
+      }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setIsMovingFolder(false);
+    }
+  };
+
+  const submitNewFolder = async (e) => {
+    if (e) e.preventDefault();
+    const trimmed = newFolderName.trim().slice(0, 255);
+    if (!trimmed) {
+      setIsCreatingFolder(false);
+      return;
+    }
+    const existing = projects.find((p) => p.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      await moveFolder(existing.name);
+      return;
+    }
+    if (window.confirm(`Create new folder "${trimmed}" and move note here? Folders cannot be renamed or deleted once created.`)) {
+      await moveFolder(trimmed);
+    }
+  };
+
+  const cancelNewFolder = () => {
+    setIsCreatingFolder(false);
+    setNewFolderName('');
+  };
+
+  const trimmedNewName = newFolderName.trim().slice(0, 255);
+  const matchingProjects = trimmedNewName
+    ? projects.filter((p) => p.name.toLowerCase().includes(trimmedNewName.toLowerCase()))
+    : [];
+
   // Save a square crop of a photo (CropModal picks it, core/services/photoCrop.js does it).
   // Unsaved typing is saved first, so the server repoints the note's text on exactly what's
   // on screen, and the note's revision is sent so a change made elsewhere meanwhile is a
@@ -636,6 +704,88 @@ ${backlinksText}
               onChange={(e) => setDueDate(e.target.value)}
             />
           </div>
+
+          {!isDailyNote && (
+            <div className="prop-field folder-prop-field">
+              <Folder size={13} />
+              <span style={{ fontSize: 12 }}>Folder:</span>
+              {isCreatingFolder ? (
+                <div className="folder-create-container">
+                  <input
+                    type="text"
+                    className="prop-input folder-create-input"
+                    placeholder="Folder name..."
+                    maxLength={255}
+                    autoFocus
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value.slice(0, 255))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') submitNewFolder(e);
+                      if (e.key === 'Escape') cancelNewFolder();
+                    }}
+                    disabled={isMovingFolder}
+                  />
+                  <button
+                    type="button"
+                    className="folder-confirm-btn"
+                    onClick={submitNewFolder}
+                    disabled={isMovingFolder || !newFolderName.trim()}
+                    title="Confirm folder"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    type="button"
+                    className="folder-cancel-btn"
+                    onClick={cancelNewFolder}
+                    disabled={isMovingFolder}
+                    title="Cancel"
+                  >
+                    Cancel
+                  </button>
+                  {matchingProjects.length > 0 && (
+                    <div className="folder-suggestions-popover">
+                      <span className="folder-suggestions-label">Existing folders:</span>
+                      <div className="folder-suggestions-list">
+                        {matchingProjects.slice(0, 5).map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className="folder-suggestion-chip"
+                            onClick={() => moveFolder(p.name)}
+                            disabled={isMovingFolder}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <select
+                  className="prop-select folder-select"
+                  value={note?.project?.name || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '__NEW_FOLDER__') {
+                      setIsCreatingFolder(true);
+                      setNewFolderName('');
+                    } else {
+                      moveFolder(val || null);
+                    }
+                  }}
+                  disabled={isMovingFolder}
+                >
+                  <option value="">No folder</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.name}>{p.name}</option>
+                  ))}
+                  <option value="__NEW_FOLDER__">+ New folder...</option>
+                </select>
+              )}
+            </div>
+          )}
 
           {note.tags && note.tags.length > 0 && (
             <div className="prop-field" style={{ marginLeft: 'auto' }}>

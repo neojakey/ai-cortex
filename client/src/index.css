@@ -1797,3 +1797,104 @@ button, input, textarea, select {
   color: #ffffff;
   font-size: 10.5px;
 }
+
+
+/* Folder picker in editor properties bar */
+.folder-prop-field {
+  position: relative;
+}
+
+.folder-create-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+
+.folder-create-input {
+  width: 140px;
+  font-size: 12px;
+  padding: 3px 7px;
+}
+
+.folder-confirm-btn {
+  background: var(--accent-primary);
+  color: var(--accent-contrast, #ffffff);
+  border: none;
+  border-radius: var(--radius-xs);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.folder-confirm-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.folder-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.folder-cancel-btn {
+  background: var(--bg-surface-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-xs);
+  padding: 2px 7px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.folder-cancel-btn:hover:not(:disabled) {
+  color: var(--text-main);
+  border-color: var(--border-subtle);
+}
+
+.folder-suggestions-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.folder-suggestions-label {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.folder-suggestions-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.folder-suggestion-chip {
+  font-size: 11px;
+  background: var(--bg-chip);
+  color: var(--accent-primary);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-xs);
+  padding: 2px 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+
+.folder-suggestion-chip:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--accent-primary);
+}
