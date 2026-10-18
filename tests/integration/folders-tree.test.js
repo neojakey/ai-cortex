@@ -169,3 +169,34 @@ test('PUT /api/notes/:id: changing note project, clearing project, creating new 
   assert.equal(createProjData.note.project.name, newProjName);
   createdProjectIds.push(createProjData.note.project.id);
 });
+
+
+test('scripts/tags-report: generates plain-text report and writes nothing to the database', async () => {
+  const { generateTagsReport } = await import('../../scripts/tags-report.js');
+
+  // Spy on queries sent to the database connection
+  const executedSql = [];
+  const dbSpy = {
+    query(sql, params) {
+      executedSql.push(sql);
+      return pool.query(sql, params);
+    }
+  };
+
+  const report = await generateTagsReport(dbSpy);
+
+  assert.ok(typeof report === 'string', 'Report should be a plain-text string');
+  assert.ok(report.includes('AI-CORTEX TAGS REPORT'), 'Report should have expected header');
+  assert.ok(report.includes('Total Tags Analyzed:'), 'Report should summarize tags');
+
+  // Assert queries were executed and every single one was a read-only SELECT
+  assert.ok(executedSql.length > 0, 'Report must execute queries');
+  for (const sql of executedSql) {
+    const trimmed = sql.trim().toUpperCase();
+    assert.ok(
+      trimmed.startsWith('SELECT'),
+      `tags-report must execute only read-only SELECT statements, got: ${trimmed.slice(0, 30)}`
+    );
+    assert.ok(!/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)\b/i.test(trimmed), 'Must contain no mutation keywords');
+  }
+});
