@@ -75,7 +75,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             content: {
               type: 'string',
-              description: 'The markdown content of the note (can contain [[links]] and #tags)'
+              description: 'The markdown content of the note (can contain [[links]]). Every #word in it also becomes a tag, so avoid stray #words (colour codes, numbers) and don\'t add a line of #tags just to label the note.'
             },
             status: {
               type: 'string',
@@ -89,7 +89,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             tags: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Optional additional tags'
+              description: 'Optional. Use at most 3, and reuse a tag that already exists rather than inventing a new one: a tag used by only one note is not useful. Do not use the project name as a tag (the project already says it; a tag equal to the note\'s project name is ignored).'
             },
             properties: {
               type: 'object',

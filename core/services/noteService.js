@@ -3,6 +3,7 @@ import { pool } from '../db/pool.js';
 import { slugify, extractWikilinks, extractHashtags, extractTasks, markdownToPlaintext, toBooleanFulltextQuery } from './parser.js';
 import { projectService } from './projectService.js';
 import { journalTitleSql } from './journalTitle.js';
+import { applyTagRules } from './tagRules.js';
 import { retryOnDeadlock } from '../db/retry.js';
 import { insertIntoSection, readSection, outlineOf } from './markdownSections.js';
 
@@ -107,8 +108,8 @@ export class NoteService {
 
       // 2. Process Tags (both extracted #tags and explicitly passed tags), recording
       // which of the two origins each tag has (see updateNote for why this matters).
-      const hashtagSet = new Set(extractHashtags(content));
-      const explicitSet = new Set(normalizeCustomTags(customTags));
+      const hashtagSet = new Set(applyTagRules(extractHashtags(content), projectRecord ? projectRecord.name : null));
+      const explicitSet = new Set(applyTagRules(normalizeCustomTags(customTags), projectRecord ? projectRecord.name : null));
       const allTags = new Set([...hashtagSet, ...explicitSet]);
 
       for (const tagName of allTags) {
@@ -293,6 +294,14 @@ export class NoteService {
       let removedTagNames = []; // tags this note is dropping; the only ones that could become orphaned
 
       if (touchesHashtagTags || touchesExplicitTags) {
+        // The folder the note will be in after this write (see core/services/tagRules.js)
+        let folderName = null;
+        if (projectRecord !== undefined) {
+          folderName = projectRecord ? projectRecord.name : null;
+        } else if (existing.project_id) {
+          const [folderRows] = await conn.query(`SELECT name FROM projects WHERE id = ?`, [existing.project_id]);
+          folderName = folderRows.length ? folderRows[0].name : null;
+        }
         const [currentTagRows] = await conn.query(
           `SELECT t.name, nt.from_hashtag, nt.from_explicit
            FROM tags t JOIN note_tags nt ON t.id = nt.tag_id WHERE nt.note_id = ?`,
@@ -309,8 +318,8 @@ export class NoteService {
             nextTagState.get(name)[origin] = true;
           }
         };
-        if (touchesHashtagTags) setOrigin(extractHashtags(newContent), 'from_hashtag');
-        if (touchesExplicitTags) setOrigin(normalizeCustomTags(customTags), 'from_explicit');
+        if (touchesHashtagTags) setOrigin(applyTagRules(extractHashtags(newContent), folderName), 'from_hashtag');
+        if (touchesExplicitTags) setOrigin(applyTagRules(normalizeCustomTags(customTags), folderName), 'from_explicit');
 
         const isActive = (f) => f.from_hashtag || f.from_explicit;
         const currentActive = currentTagRows.filter(isActive).map((r) => r.name);
